@@ -222,7 +222,20 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
     ];
     for (row, label, formula, value, unit, name) in outputs {
         write_label(summary, row, 0, label, &plain)?;
-        summary.write_formula(row, 1, cached(Formula::new(formula), value))?;
+        let number_format = match unit {
+            "" => "0",
+            "ppmv" | "1/h" => "#,##0",
+            "s" => "0.0",
+            "L" | "mol" => "0.000000",
+            "mg/g" => "0.00",
+            _ => "0.000",
+        };
+        summary.write_formula_with_format(
+            row,
+            1,
+            cached(Formula::new(formula), value),
+            &Format::new().set_num_format(number_format),
+        )?;
         summary.write_string(row, 2, unit)?;
         if let Some(name) = name {
             names.push((name, format!("=Summary!$B${}", row + 1)));
