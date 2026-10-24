@@ -33,7 +33,7 @@ pub trait Sink: Send + Sync + 'static {
 enum PollError {
     NoReply,
     Invalid,
-    Port(std::io::Error),
+    Port,
 }
 
 pub fn now_ms() -> i64 {
@@ -51,9 +51,9 @@ fn open(name: &str) -> serialport::Result<Box<dyn SerialPort>> {
 }
 
 fn poll(port: &mut dyn SerialPort) -> Result<u32, PollError> {
-    port.clear(ClearBuffer::Input).map_err(|error| PollError::Port(error.into()))?;
-    port.write_all(&REQUEST).map_err(PollError::Port)?;
-    port.flush().map_err(PollError::Port)?;
+    port.clear(ClearBuffer::Input).map_err(|_| PollError::Port)?;
+    port.write_all(&REQUEST).map_err(|_| PollError::Port)?;
+    port.flush().map_err(|_| PollError::Port)?;
     let deadline = Instant::now() + REPLY_TIMEOUT;
     let mut buffer = Vec::with_capacity(32);
     let mut chunk = [0u8; 32];
@@ -70,7 +70,7 @@ fn poll(port: &mut dyn SerialPort) -> Result<u32, PollError> {
                 }
             }
             Err(error) if error.kind() == ErrorKind::TimedOut || error.kind() == ErrorKind::Interrupted => {}
-            Err(error) => return Err(PollError::Port(error)),
+            Err(_) => return Err(PollError::Port),
         }
     }
     Err(if last_error.is_some() { PollError::Invalid } else { PollError::NoReply })
@@ -93,16 +93,15 @@ fn candidate_ports(extra: Vec<String>, preferred: Option<&str>) -> Vec<String> {
     ports
 }
 
-/// Opens each candidate port and returns first one that answers with valid frame, or names of ports tried.
-fn scan(sink: &dyn Sink, preferred: Option<&str>) -> Result<(String, Box<dyn SerialPort>, u32), Vec<String>> {
-    let ports = candidate_ports(sink.extra_ports(), preferred);
-    for name in &ports {
-        let Ok(mut port) = open(name) else { continue };
+/// Opens each candidate port and returns first one that answers with valid frame.
+fn scan(sink: &dyn Sink, preferred: Option<&str>) -> Option<(String, Box<dyn SerialPort>, u32)> {
+    for name in candidate_ports(sink.extra_ports(), preferred) {
+        let Ok(mut port) = open(&name) else { continue };
         if let Ok(count) = poll(port.as_mut()) {
-            return Ok((name.clone(), port, count));
+            return Some((name, port, count));
         }
     }
-    Err(ports)
+    None
 }
 
 fn sleep_until(deadline: Instant, stop: &AtomicBool) {
@@ -133,11 +132,10 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
         }
         let scan_started = Instant::now();
         let (name, mut port, count) = match scan(sink, last_port.as_deref()) {
-            Ok(found) => found,
-            Err(ports) => {
+            Some(found) => found,
+            None => {
                 if !not_found_reported && search_started.elapsed() >= NOT_FOUND_DELAY {
-                    let list = if ports.is_empty() { "no serial ports".to_string() } else { ports.join(", ") };
-                    sink.message("warning", &format!("No detector found ({list})"));
+                    sink.message("warning", "No detector found");
                     not_found_reported = true;
                 }
                 sleep_until(scan_started + SCAN_INTERVAL, stop);
@@ -164,29 +162,23 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
             }
             match poll(port.as_mut()) {
                 Ok(count) => {
-                    if missed > 0 {
-                        sink.message("info", &format!("Reply from {name} resumed"));
-                    }
                     missed = 0;
                     sink.reading(now_ms(), count);
                 }
-                Err(PollError::Port(error)) => {
-                    sink.message("error", &format!("Disconnected from {name}: {error}"));
+                Err(PollError::Port) => {
+                    sink.message("error", &format!("Disconnected from {name}"));
                     break;
                 }
                 Err(error) => {
                     if let PollError::Invalid = error {
                         invalid_frames += 1;
-                        if invalid_frames == 1 || invalid_frames % 60 == 0 {
-                            sink.message("warning", &format!("Invalid frame from {name} ({invalid_frames} total)"));
+                        if invalid_frames == 1 {
+                            sink.message("warning", &format!("Invalid frame from {name}"));
                         }
                     }
                     missed += 1;
-                    if missed == 1 {
-                        sink.message("warning", &format!("No reply from {name}"));
-                    }
                     if missed >= MAX_MISSED_REPLIES {
-                        sink.message("error", &format!("Disconnected from {name}: no reply"));
+                        sink.message("error", &format!("Disconnected from {name}"));
                         break;
                     }
                 }

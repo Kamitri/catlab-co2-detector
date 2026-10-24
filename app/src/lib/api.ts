@@ -116,6 +116,7 @@ export const api = {
   deleteRun: (id: number) => invoke<void>("delete_run", { id }),
   logMessage: (level: MessageLevel, text: string) => invoke<void>("log_message", { level, text }),
   defaultFolder: () => invoke<string>("default_folder"),
+  dataFolder: () => invoke<string>("data_folder"),
 }
 
 export const events = {

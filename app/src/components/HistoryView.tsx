@@ -26,7 +26,7 @@ interface RunData {
 function ResultTable({ result }: { result: RunResult }) {
   const rows: [React.ReactNode, string][] = [
     ["Samples", formatInteger(result.sampleCount)],
-    ["Gaps", `${result.gapCount} (${formatInteger(result.missingTimeS)} s)`],
+    ["Missing data", `${formatInteger(result.missingTimeS)} s`],
     ["Flow rate", `${formatNumber(result.flowRateMlMin)} mL/min`],
     ["Baseline", `${formatInteger(result.baselinePpm)} ppm`],
     [<>C<sub>0</sub></>, `${formatInteger(result.coPpm)} ppm`],
@@ -99,7 +99,7 @@ function RunDetail({
           </Button>
           {run.exportPath && (
             <Button size="sm" variant="outline" onClick={() => void revealItemInDir(run.exportPath!)}>
-              Show file
+              Show in folder
             </Button>
           )}
           <Button

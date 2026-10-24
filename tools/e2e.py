@@ -114,6 +114,9 @@ def main(work: Path = typer.Option(Path("/tmp/co2-e2e"), help="Work folder"), st
         driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
         time.sleep(3)
         shot(driver, "08-history")
+        driver.find_element(By.XPATH, "//button[normalize-space()='About']").click()
+        time.sleep(2)
+        shot(driver, "08b-about")
 
         # Crash during run: application is killed, then restarted
         driver.find_element(By.XPATH, "//button[normalize-space()='Live']").click()

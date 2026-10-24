@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { useEffect, useRef, useState } from "react"
 
+import { AboutView } from "@/components/AboutView"
 import { HistoryView } from "@/components/HistoryView"
 import { LiveView } from "@/components/LiveView"
 import { ConfirmDialog, FinishDialog, MarkerDialog, RecoveryDialog, StartDialog } from "@/components/RunDialogs"
@@ -13,7 +14,7 @@ import { useMonitor } from "@/hooks/useMonitor"
 import { api, type Run, type RunParameters, type Settings } from "@/lib/api"
 
 type DialogState = "start" | "finish" | "marker" | "abort" | "settings" | "close" | null
-type View = "live" | "history"
+type View = "live" | "history" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
   const base: RunParameters = {
@@ -91,6 +92,7 @@ export default function App() {
           <TabsList>
             <TabsTrigger value="live">Live</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="ml-auto">
@@ -110,8 +112,10 @@ export default function App() {
               onFinish={() => setDialog("finish")}
               onAbort={() => setDialog("abort")}
             />
-          ) : (
+          ) : view === "history" ? (
             <HistoryView refreshKey={`${state.activeRun?.id}-${state.lastRun?.id}-${state.lastRun?.exportPath}`} />
+          ) : (
+            <AboutView />
           )}
         </main>
         <StatusPanel state={state} now={now} />
@@ -171,7 +175,6 @@ export default function App() {
       {dialog === "close" && (
         <ConfirmDialog
           title="Run in progress"
-          description="Data is not recorded while the application is closed."
           action="Close"
           destructive
           onCancel={() => setDialog(null)}

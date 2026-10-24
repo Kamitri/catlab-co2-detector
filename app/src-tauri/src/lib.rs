@@ -174,9 +174,9 @@ fn add_marker(app: AppHandle, state: State<AppState>, id: i64, label: String, va
         run.parameters.delay_s = ((timestamp - run.started_at) as f64 / 1000.0).round();
         database.update_parameters(id, &run.parameters).map_err(error_text)?;
         let _ = app.emit("run", &run);
-        log(&app, &database, "info", &format!("{label}: delay time {} s", run.parameters.delay_s));
+        log(&app, &database, "info", &label);
     } else {
-        log(&app, &database, "info", &format!("Marker: {label}"));
+        log(&app, &database, "info", &format!("Marker added: {label}"));
     }
     Ok(marker)
 }
@@ -227,7 +227,8 @@ fn export(app: &AppHandle, database: &Database, run: &Run) -> CommandResult<Stri
     .map_err(error_text)?;
     let path_text = path.display().to_string();
     database.set_export_path(run.id, &path_text).map_err(error_text)?;
-    log(app, database, "info", &format!("Exported {path_text}"));
+    let file_name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+    log(app, database, "info", &format!("Exported {file_name}"));
     Ok(path_text)
 }
 
@@ -292,6 +293,11 @@ fn log_message(app: AppHandle, state: State<AppState>, level: String, text: Stri
 }
 
 #[tauri::command]
+fn data_folder(app: AppHandle) -> String {
+    app.path().app_data_dir().map(|path| path.display().to_string()).unwrap_or_default()
+}
+
+#[tauri::command]
 fn default_folder(app: AppHandle) -> String {
     default_export_folder(&app).display().to_string()
 }
@@ -309,10 +315,10 @@ pub fn run() {
             let cutoff = now_ms() - i64::from(settings.retention_days) * 86_400_000;
             database.prune_readings(cutoff)?;
             let active_run = database.active_run()?;
-            if active_run.is_some() {
-                database.insert_message(now_ms(), "warning", "Run in progress recovered after restart")?;
-            }
             database.insert_message(now_ms(), "info", "Application started")?;
+            if let Some(run) = &active_run {
+                database.insert_message(now_ms(), "warning", &format!("Run recovered: {}", run.parameters.sample))?;
+            }
 
             let database = Arc::new(Mutex::new(database));
             let connection = Arc::new(Mutex::new(Connection::Searching));
@@ -341,6 +347,7 @@ pub fn run() {
             list_runs,
             delete_run,
             log_message,
+            data_folder,
             default_folder,
         ])
         .run(tauri::generate_context!())

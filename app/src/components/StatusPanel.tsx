@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import type { MonitorState } from "@/hooks/useMonitor"
-import { concentration } from "@/lib/data"
+import { concentration, GAP_THRESHOLD_MS } from "@/lib/data"
 import { formatClock, formatDuration, formatInteger, formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -42,10 +42,12 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
   const fresh = latest !== null && now - latest.timestamp < 3000
   const connected = connection.state === "connected"
 
-  let gapCount = 0
+  // Time without readings (s): intervals longer than gap threshold, minus 1 s expected interval
+  let missingS = 0
   if (activeRun) {
     for (let index = 1; index < readings.timestamps.length; index++) {
-      if (readings.timestamps[index] - readings.timestamps[index - 1] > 1500) gapCount++
+      const interval = readings.timestamps[index] - readings.timestamps[index - 1]
+      if (interval > GAP_THRESHOLD_MS) missingS += interval / 1000 - 1
     }
   }
 
@@ -81,7 +83,7 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
           <Row label="Elapsed" value={formatDuration((now - activeRun.startedAt) / 1000)} />
           <Row label="Delay time" value={`${formatInteger(activeRun.parameters.delayS)} s`} />
           <Row label="Samples" value={formatInteger(readings.timestamps.length)} />
-          <Row label="Gaps" value={gapCount} />
+          <Row label="Missing data" value={`${formatInteger(missingS)} s`} />
           <Row label="Equilibrium" value={equilibriumAt !== null ? formatDuration(equilibriumAt) : "–"} />
         </Section>
       ) : lastRun ? (
@@ -97,7 +99,7 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
               className="mt-1 w-full"
               onClick={() => void revealItemInDir(lastRun.exportPath!)}
             >
-              Show file
+              Show in folder
             </Button>
           )}
         </Section>
