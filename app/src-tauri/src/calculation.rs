@@ -9,7 +9,7 @@
 
 use serde::Serialize;
 
-use crate::model::{Readings, Run};
+use crate::model::{Measurements, Run};
 use crate::protocol::concentration;
 
 pub const GAS_CONSTANT: f64 = 0.08206;
@@ -27,9 +27,10 @@ pub struct Series {
 }
 
 impl Series {
-    pub fn from_readings(run: &Run, readings: &Readings) -> Self {
-        let times = readings.timestamps.iter().map(|timestamp| (timestamp - run.started_at) as f64 / 1000.0).collect();
-        let concentrations = readings
+    pub fn from_measurements(run: &Run, measurements: &Measurements) -> Self {
+        let times =
+            measurements.timestamps.iter().map(|timestamp| (timestamp - run.started_at) as f64 / 1000.0).collect();
+        let concentrations = measurements
             .counts
             .iter()
             .map(|count| concentration(*count, run.conversion_scale, run.conversion_exponent))
@@ -70,16 +71,14 @@ pub fn mean(values: impl Iterator<Item = f64>) -> f64 {
 /// Flow rate used in calculation: mean of measurements, or nominal value without measurements.
 pub fn effective_flow_rate(run: &Run) -> f64 {
     let measurements = &run.parameters.flow_measurements;
-    if measurements.is_empty() {
-        run.parameters.flow_rate_ml_min
-    } else {
-        mean(measurements.iter().copied())
-    }
+    if measurements.is_empty() { run.parameters.flow_rate_ml_min } else { mean(measurements.iter().copied()) }
 }
 
 /// Mean baseline (ppmv) over first window.
 pub fn baseline(series: &Series, window_s: f64) -> f64 {
-    mean(series.times.iter().zip(&series.concentrations).filter(|(time, _)| **time <= window_s).map(|(_, value)| *value))
+    mean(
+        series.times.iter().zip(&series.concentrations).filter(|(time, _)| **time <= window_s).map(|(_, value)| *value),
+    )
 }
 
 /// Co (ppmv above baseline) as mean over last window.
@@ -109,7 +108,7 @@ pub fn stoichiometric_time(series: &Series, delay_s: f64, baseline_ppm: f64, co_
     total
 }
 
-/// Stoichiometric time of a run with its own parameters; used for blank run.
+/// Stoichiometric time of blank run, calculated with parameters of blank run.
 pub fn run_stoichiometric_time(run: &Run, series: &Series) -> f64 {
     let baseline_ppm = baseline(series, run.parameters.baseline_window_s);
     let co_ppm = inlet_concentration(series, run.parameters.co_window_s, baseline_ppm);

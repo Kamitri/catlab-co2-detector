@@ -93,10 +93,7 @@ mod tests {
 
     #[test]
     fn rejects_bad_checksum() {
-        assert_eq!(
-            decode_reply(&[0x40, 0x04, 0x52, 0x00, 0x01, 0x20, 0x78, 0x21]),
-            Err(FrameError::BadChecksum)
-        );
+        assert_eq!(decode_reply(&[0x40, 0x04, 0x52, 0x00, 0x01, 0x20, 0x78, 0x21]), Err(FrameError::BadChecksum));
     }
 
     #[test]

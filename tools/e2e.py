@@ -2,16 +2,20 @@
 
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
+from Xlib import X, display, protocol
 
 ROOT = Path(__file__).resolve().parents[1]
 APPLICATION = ROOT / "app/src-tauri/target/debug/co2-monitor"
@@ -43,6 +47,35 @@ def wait_text(driver: webdriver.Remote, text: str, timeout: float = 60) -> None:
     WebDriverWait(driver, timeout, poll_frequency=0.5).until(lambda current: text in current.find_element(By.TAG_NAME, "body").text)
 
 
+def close_window(title: str) -> None:
+    """Send WM_DELETE_WINDOW to window, as title bar close button does."""
+    result = subprocess.run(
+        ["xdotool", "search", "--name", title], env=dict(os.environ, DISPLAY=":99"), capture_output=True, check=True, text=True
+    )
+    connection = display.Display(":99")
+    delete = connection.intern_atom("WM_DELETE_WINDOW")
+    protocols = connection.intern_atom("WM_PROTOCOLS")
+    for window_id in result.stdout.split():
+        window = connection.create_resource_object("window", int(window_id))
+        event = protocol.event.ClientMessage(window=window, client_type=protocols, data=(32, [delete, X.CurrentTime, 0, 0, 0]))
+        window.send_event(event)
+    connection.flush()
+
+
+def window_visible(title: str) -> bool:
+    """Return whether window with title is mapped."""
+    result = subprocess.run(
+        ["xdotool", "search", "--onlyvisible", "--name", title], env=dict(os.environ, DISPLAY=":99"), capture_output=True, check=False
+    )
+    return bool(result.stdout.strip())
+
+
+def measurement_count(work: Path) -> int:
+    """Count stored measurements in application database."""
+    with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
+        return connection.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
+
+
 def fill(driver: webdriver.Remote, element_id: str, value: str) -> None:
     """Replace input value."""
     element = driver.find_element(By.ID, element_id)
@@ -51,7 +84,10 @@ def fill(driver: webdriver.Remote, element_id: str, value: str) -> None:
     element.send_keys(value)
 
 
-def main(work: Path = typer.Option(Path("/tmp/co2-e2e"), help="Work folder"), step: int = typer.Option(20, help="Samples per second")) -> None:
+def main(
+    work: Annotated[Path, typer.Option(help="Work folder")] = Path("/tmp/co2-e2e"),
+    step: Annotated[int, typer.Option(help="Samples per second")] = 20,
+) -> None:
     """Run end-to-end scenario and save screenshots in work folder."""
     subprocess.run(["rm", "-rf", str(work)], check=True)
     (work / "shots").mkdir(parents=True)
@@ -65,7 +101,10 @@ def main(work: Path = typer.Option(Path("/tmp/co2-e2e"), help="Work folder"), st
     processes.append(simulator)
     processes.append(start(["tauri-driver", "--native-driver", "/usr/bin/WebKitWebDriver"], env=environment))
     time.sleep(2)
-    shot = lambda driver, name: driver.save_screenshot(str(work / "shots" / f"{name}.png"))
+
+    def shot(driver: webdriver.Remote, name: str) -> None:
+        driver.save_screenshot(str(work / "shots" / f"{name}.png"))
+
     try:
         driver = session()
         driver.set_window_size(1440, 900)
@@ -90,7 +129,7 @@ def main(work: Path = typer.Option(Path("/tmp/co2-e2e"), help="Work folder"), st
         time.sleep(60)
         shot(driver, "04-running")
 
-        # Device stops answering for 10 s, then recovers
+        # Device stops replying for 10 s, then recovers
         os.kill(simulator.pid, signal.SIGSTOP)
         wait_text(driver, "Disconnected", 30)
         time.sleep(4)
@@ -123,13 +162,24 @@ def main(work: Path = typer.Option(Path("/tmp/co2-e2e"), help="Work folder"), st
         button(driver, "Start").click()
         fill(driver, "sample", "Crash test")
         driver.find_element(By.XPATH, "//div[@role='dialog']//button[normalize-space()='Start']").click()
-        time.sleep(10)
+        time.sleep(5)
+
+        # Close button during run: window hides to tray and recording continues
+        close_window("CO₂ Monitor")
+        time.sleep(2)
+        assert not window_visible("CO₂ Monitor"), "Window still visible after close during run"
+        count = measurement_count(work)
+        time.sleep(5)
+        assert measurement_count(work) >= count + 3, "Recording stopped after window close"
+        print("Close during run: window hidden, recording continues")
+
         subprocess.run(["pkill", "-9", "-f", str(APPLICATION)], check=False)
         time.sleep(5)
+        # Session of killed application can fail to close; new session follows
         try:
             driver.quit()
-        except Exception:
-            pass
+        except WebDriverException as error:
+            print(f"Old session not closed: {error.msg}")
         driver = session()
         driver.set_window_size(1440, 900)
         wait_text(driver, "Run in progress", 30)

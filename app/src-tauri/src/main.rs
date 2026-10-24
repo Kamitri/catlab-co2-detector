@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  co2_monitor_lib::run();
+    co2_monitor_lib::run();
 }

@@ -1,4 +1,4 @@
-import type { Readings, Run } from "@/lib/api"
+import type { Measurements, Run } from "@/lib/api"
 
 export const VENDOR_SCALE = 1785.9
 export const VENDOR_EXPONENT = 0.0111
@@ -17,10 +17,10 @@ export interface Series {
   y: number[]
 }
 
-export function runSeries(run: Run, readings: Readings): Series {
+export function runSeries(run: Run, measurements: Measurements): Series {
   return {
-    x: readings.timestamps.map((timestamp) => (timestamp - run.startedAt) / 1000),
-    y: readings.counts.map((count) => concentration(count, run.conversionScale, run.conversionExponent)),
+    x: measurements.timestamps.map((timestamp) => (timestamp - run.startedAt) / 1000),
+    y: measurements.counts.map((count) => concentration(count, run.conversionScale, run.conversionExponent)),
   }
 }
 

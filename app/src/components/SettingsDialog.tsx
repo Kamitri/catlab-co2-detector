@@ -1,13 +1,14 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog"
 import { useEffect, useState } from "react"
 
-import { Field, parseNumber } from "@/components/RunForm"
+import { Field } from "@/components/RunForm"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { api, type Settings } from "@/lib/api"
 import { VENDOR_EXPONENT, VENDOR_SCALE } from "@/lib/data"
+import { parseNumber } from "@/lib/runForm"
 
 const NUMBER_FIELDS = [
   ["baselineWindowS", "Baseline window (s)"],

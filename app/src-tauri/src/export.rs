@@ -6,7 +6,7 @@ use chrono::{Local, TimeZone};
 use rust_xlsxwriter::{Chart, ChartType, Format, FormatAlign, FormatScript, Formula, Workbook, Worksheet, XlsxError};
 
 use crate::calculation::{RunResult, Series};
-use crate::model::{Readings, Run, RunStatus};
+use crate::model::{Measurements, Run, RunStatus};
 
 /// Converts Unix time (ms) to Excel serial date in local time.
 fn excel_date(timestamp: i64) -> f64 {
@@ -16,11 +16,23 @@ fn excel_date(timestamp: i64) -> f64 {
     (local - epoch).num_milliseconds() as f64 / 86_400_000.0
 }
 
+/// Device names that Windows does not allow as file names, with or without extension.
+const RESERVED_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+    "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 fn sanitize(text: &str) -> String {
-    let cleaned: String =
-        text.chars().map(|character| if r#"\/:*?"<>|"#.contains(character) { '_' } else { character }).collect();
+    let cleaned: String = text
+        .chars()
+        .map(|character| if r#"\/:*?"<>|"#.contains(character) || character.is_control() { '_' } else { character })
+        .collect();
     let trimmed = cleaned.trim().trim_end_matches('.').to_string();
-    if trimmed.is_empty() { "run".into() } else { trimmed }
+    if trimmed.is_empty() {
+        return "run".into();
+    }
+    let stem = trimmed.split('.').next().unwrap_or_default().to_ascii_uppercase();
+    if RESERVED_NAMES.contains(&stem.as_str()) { format!("{trimmed}_") } else { trimmed }
 }
 
 /// Builds file name from pattern; placeholders: {date}, {time}, {sample}, {operator}, {id}.
@@ -63,13 +75,29 @@ fn write_label(sheet: &mut Worksheet, row: u32, column: u16, text: &str, base: &
     Ok(())
 }
 
+/// Result row of Summary sheet. Braces in label mark subscript; name is defined name for later formulas.
+struct ResultRow<'a> {
+    row: u32,
+    label: &'a str,
+    formula: String,
+    value: f64,
+    unit: &'a str,
+    name: Option<&'a str>,
+}
+
+impl<'a> ResultRow<'a> {
+    fn new(row: u32, label: &'a str, formula: String, value: f64, unit: &'a str, name: Option<&'a str>) -> Self {
+        Self { row, label, formula, value, unit, name }
+    }
+}
+
 fn number_or_empty(value: f64) -> String {
     if value.is_finite() { value.to_string() } else { String::new() }
 }
 
 pub struct ExportInput<'a> {
     pub run: &'a Run,
-    pub readings: &'a Readings,
+    pub measurements: &'a Measurements,
     pub result: &'a RunResult,
     pub blank_label: Option<String>,
     /// Write cached formula results; disable in tests to force recalculation.
@@ -80,7 +108,7 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
     let run = input.run;
     let parameters = &run.parameters;
     let result = input.result;
-    let series = Series::from_readings(run, input.readings);
+    let series = Series::from_measurements(run, input.measurements);
     let row_count = series.times.len() as u32;
     let last_row = row_count + 1;
 
@@ -105,7 +133,8 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
         RunStatus::Finished => "Finished",
         RunStatus::Aborted => "Aborted",
     };
-    let text_rows = [("Sample", parameters.sample.as_str()), ("Operator", parameters.operator.as_str()), ("Status", status)];
+    let text_rows =
+        [("Sample", parameters.sample.as_str()), ("Operator", parameters.operator.as_str()), ("Status", status)];
     for (row, (label, value)) in text_rows.iter().enumerate() {
         summary.write_string_with_format(row as u32, 0, *label, &bold)?;
         summary.write_string(row as u32, 1, *value)?;
@@ -166,10 +195,10 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
     summary.write_string_with_format(26, 0, "Result", &bold)?;
     summary.write_string_with_format(26, 1, "Value", &bold)?;
     summary.write_string_with_format(26, 2, "Unit", &bold)?;
-    let outputs: [(u32, &str, String, f64, &str, Option<&str>); 15] = [
-        (27, "Samples", "=COUNT(Data!A:A)".into(), result.sample_count as f64, "", None),
-        (28, "End time", "=MAX(Data!A:A)".into(), result.end_time_s, "s", Some("EndTime")),
-        (
+    let outputs = [
+        ResultRow::new(27, "Samples", "=COUNT(Data!A:A)".into(), result.sample_count as f64, "", None),
+        ResultRow::new(28, "End time", "=MAX(Data!A:A)".into(), result.end_time_s, "s", Some("EndTime")),
+        ResultRow::new(
             29,
             "Baseline",
             "=AVERAGEIFS(Data!D:D,Data!A:A,\"<=\"&BaselineWindow)".into(),
@@ -177,7 +206,7 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
             "ppmv",
             Some("Baseline"),
         ),
-        (
+        ResultRow::new(
             30,
             "C{0}",
             "=AVERAGEIFS(Data!D:D,Data!A:A,\">=\"&(EndTime-CoWindow))-Baseline".into(),
@@ -185,12 +214,26 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
             "ppmv",
             Some("InletCO2"),
         ),
-        (31, "GHSV", "=FlowRate*60/(SampleMass/Density)".into(), result.ghsv_per_h, "1/h", None),
-        (32, "Retention time", "=3600/B32".into(), result.retention_time_s, "s", None),
-        (33, "T{b}", "=EndTime-DelayTime".into(), result.tb_s, "s", Some("AdsorptionTime")),
-        (34, "Total volume for T{b}", "=FlowRate*AdsorptionTime/60/1000".into(), result.total_volume_l, "L", None),
-        (35, "Total CO{2} volume for T{b}", "=B35*InletCO2*10^-6".into(), result.co2_volume_in_l, "L", None),
-        (
+        ResultRow::new(31, "GHSV", "=FlowRate*60/(SampleMass/Density)".into(), result.ghsv_per_h, "1/h", None),
+        ResultRow::new(32, "Retention time", "=3600/B32".into(), result.retention_time_s, "s", None),
+        ResultRow::new(33, "T{b}", "=EndTime-DelayTime".into(), result.tb_s, "s", Some("AdsorptionTime")),
+        ResultRow::new(
+            34,
+            "Total volume for T{b}",
+            "=FlowRate*AdsorptionTime/60/1000".into(),
+            result.total_volume_l,
+            "L",
+            None,
+        ),
+        ResultRow::new(
+            35,
+            "Total CO{2} volume for T{b}",
+            "=B35*InletCO2*10^-6".into(),
+            result.co2_volume_in_l,
+            "L",
+            None,
+        ),
+        ResultRow::new(
             36,
             "Stoichiometric time",
             "=SUM(Data!H:H)".into(),
@@ -198,7 +241,7 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
             "s",
             Some("StoichiometricTime"),
         ),
-        (
+        ResultRow::new(
             37,
             "CO{2} volume adsorbed",
             "=FlowRate/60/1000*InletCO2*10^-6*(StoichiometricTime-BlankTime)".into(),
@@ -206,10 +249,17 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
             "L",
             None,
         ),
-        (38, "CO{2} adsorbed", "=B38*Pressure/0.08206/(Temperature+273.15)".into(), result.adsorbed_mol, "mol", None),
-        (39, "CO{2} capacity", "=1000*B39*44.01/SampleMass".into(), result.capacity_mg_g, "mg/g", None),
-        (40, "CO{2} capacity", "=1000*B39/SampleMass".into(), result.capacity_mmol_g, "mmol/g", None),
-        (
+        ResultRow::new(
+            38,
+            "CO{2} adsorbed",
+            "=B38*Pressure/0.08206/(Temperature+273.15)".into(),
+            result.adsorbed_mol,
+            "mol",
+            None,
+        ),
+        ResultRow::new(39, "CO{2} capacity", "=1000*B39*44.01/SampleMass".into(), result.capacity_mg_g, "mg/g", None),
+        ResultRow::new(40, "CO{2} capacity", "=1000*B39/SampleMass".into(), result.capacity_mmol_g, "mmol/g", None),
+        ResultRow::new(
             41,
             "Breakthrough time (C/C{0} = 0.05)",
             format!(
@@ -220,7 +270,7 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
             None,
         ),
     ];
-    for (row, label, formula, value, unit, name) in outputs {
+    for ResultRow { row, label, formula, value, unit, name } in outputs {
         write_label(summary, row, 0, label, &plain)?;
         let number_format = match unit {
             "" => "0",
@@ -244,7 +294,8 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
 
     // ======[ Data Sheet ]======
     let data = workbook.add_worksheet().set_name("Data")?;
-    let headers = ["t (s)", "Time", "N", "CO{2} (ppmv)", "Δt (s)", "C − baseline (ppmv)", "C/C{0}", "(1 − C/C{0})·Δt (s)"];
+    let headers =
+        ["t (s)", "Time", "N", "CO{2} (ppmv)", "Δt (s)", "C − baseline (ppmv)", "C/C{0}", "(1 − C/C{0})·Δt (s)"];
     for (column, title) in headers.iter().enumerate() {
         write_label(data, 0, column as u16, title, &header)?;
     }
@@ -258,9 +309,13 @@ pub fn write_workbook(path: &Path, input: &ExportInput) -> Result<(), XlsxError>
         let time = series.times[index];
         let value = series.concentrations[index];
         data.write_number(row, 0, time)?;
-        data.write_number_with_format(row, 1, excel_date(input.readings.timestamps[index]), &date_format)?;
-        data.write_number(row, 2, f64::from(input.readings.counts[index]))?;
-        data.write_formula(row, 3, cached(Formula::new(format!("=ConversionScale*EXP(ConversionExponent*C{excel_row})")), value))?;
+        data.write_number_with_format(row, 1, excel_date(input.measurements.timestamps[index]), &date_format)?;
+        data.write_number(row, 2, f64::from(input.measurements.counts[index]))?;
+        data.write_formula(
+            row,
+            3,
+            cached(Formula::new(format!("=ConversionScale*EXP(ConversionExponent*C{excel_row})")), value),
+        )?;
         let previous_reference = if row == 1 { "0".to_string() } else { format!("A{}", excel_row - 1) };
         let interval = if time > parameters.delay_s { time - f64::max(previous_time, parameters.delay_s) } else { 0.0 };
         data.write_formula(
@@ -330,6 +385,9 @@ mod tests {
             parameters: RunParameters { sample: "K/ZY: II".into(), ..Default::default() },
         };
         assert!(file_name("{sample}_{id}", &run).starts_with("K_ZY_ II_7"));
+        assert_eq!(sanitize("con"), "con_");
+        assert_eq!(sanitize("COM3.test"), "COM3.test_");
+        assert_eq!(sanitize("COM30"), "COM30");
     }
 
     #[test]
@@ -364,15 +422,24 @@ mod tests {
                 ..Default::default()
             },
         };
-        let readings = Readings {
+        let measurements = Measurements {
             timestamps: (1..=200).map(|second| run.started_at + second * 1000).collect(),
             counts: (1..=200).map(|second| if second <= 100 { 30 } else { 260 }).collect(),
         };
-        let series = Series::from_readings(&run, &readings);
+        let series = Series::from_measurements(&run, &measurements);
         let result = calculate(&run, &series, 0.0);
         let path = directory.path().join("test.xlsx");
-        write_workbook(&path, &ExportInput { run: &run, readings: &readings, result: &result, blank_label: None, cached_results: true })
-            .unwrap();
+        write_workbook(
+            &path,
+            &ExportInput {
+                run: &run,
+                measurements: &measurements,
+                result: &result,
+                blank_label: None,
+                cached_results: true,
+            },
+        )
+        .unwrap();
         assert!(path.metadata().unwrap().len() > 1000);
     }
 }

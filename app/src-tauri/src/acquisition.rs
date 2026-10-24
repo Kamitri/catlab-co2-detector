@@ -2,6 +2,7 @@
 //! reconnects after disconnection. Runs on separate thread, independent of UI.
 
 use std::io::ErrorKind;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -16,13 +17,13 @@ pub const BAUD_RATE: u32 = 19200;
 pub const POLL_INTERVAL: Duration = Duration::from_secs(1);
 const SCAN_INTERVAL: Duration = Duration::from_secs(2);
 const REPLY_TIMEOUT: Duration = Duration::from_millis(500);
-/// Searching time before "No detector found" message.
+/// Searching time before "Detector not found" message.
 const NOT_FOUND_DELAY: Duration = Duration::from_secs(10);
 /// Consecutive missing replies before port is treated as disconnected.
 const MAX_MISSED_REPLIES: u32 = 3;
 
 pub trait Sink: Send + Sync + 'static {
-    fn reading(&self, timestamp: i64, count: u32);
+    fn measurement(&self, timestamp: i64, count: u32);
     fn connection(&self, connection: Connection);
     fn message(&self, level: &str, text: &str);
     /// Extra port names to scan, in addition to system ports.
@@ -77,23 +78,24 @@ fn poll(port: &mut dyn SerialPort) -> Result<u32, PollError> {
 }
 
 fn candidate_ports(extra: Vec<String>, preferred: Option<&str>) -> Vec<String> {
-    let mut ports: Vec<String> =
-        serialport::available_ports().map(|list| list.into_iter().map(|info| info.port_name).collect()).unwrap_or_default();
+    let mut ports: Vec<String> = serialport::available_ports()
+        .map(|list| list.into_iter().map(|info| info.port_name).collect())
+        .unwrap_or_default();
     for name in extra {
         if !ports.contains(&name) {
             ports.push(name);
         }
     }
-    if let Some(preferred) = preferred {
-        if let Some(index) = ports.iter().position(|name| name == preferred) {
-            let name = ports.remove(index);
-            ports.insert(0, name);
-        }
+    if let Some(preferred) = preferred
+        && let Some(index) = ports.iter().position(|name| name == preferred)
+    {
+        let name = ports.remove(index);
+        ports.insert(0, name);
     }
     ports
 }
 
-/// Opens each candidate port and returns first one that answers with valid frame.
+/// Opens each candidate port and returns first port that replies with valid frame.
 fn scan(sink: &dyn Sink, preferred: Option<&str>) -> Option<(String, Box<dyn SerialPort>, u32)> {
     for name in candidate_ports(sink.extra_ports(), preferred) {
         let Ok(mut port) = open(&name) else { continue };
@@ -114,8 +116,17 @@ fn sleep_until(deadline: Instant, stop: &AtomicBool) {
     }
 }
 
+/// Starts acquisition thread. A panic inside loop restarts loop instead of ending acquisition.
 pub fn spawn(sink: Arc<dyn Sink>, stop: Arc<AtomicBool>) -> JoinHandle<()> {
-    thread::spawn(move || run_loop(sink.as_ref(), &stop))
+    thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+            let result = panic::catch_unwind(AssertUnwindSafe(|| run_loop(sink.as_ref(), &stop)));
+            if result.is_err() {
+                sink.message("error", "Acquisition restarted after internal error");
+                sleep_until(Instant::now() + SCAN_INTERVAL, &stop);
+            }
+        }
+    })
 }
 
 fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
@@ -135,7 +146,7 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
             Some(found) => found,
             None => {
                 if !not_found_reported && search_started.elapsed() >= NOT_FOUND_DELAY {
-                    sink.message("warning", "No detector found");
+                    sink.message("warning", "Detector not found");
                     not_found_reported = true;
                 }
                 sleep_until(scan_started + SCAN_INTERVAL, stop);
@@ -145,7 +156,7 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
         searching_announced = false;
         sink.connection(Connection::Connected { port: name.clone() });
         sink.message("info", &format!("Connected to {name}"));
-        sink.reading(now_ms(), count);
+        sink.measurement(now_ms(), count);
         last_port = Some(name.clone());
 
         let mut next_poll = Instant::now() + POLL_INTERVAL;
@@ -163,7 +174,7 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
             match poll(port.as_mut()) {
                 Ok(count) => {
                     missed = 0;
-                    sink.reading(now_ms(), count);
+                    sink.measurement(now_ms(), count);
                 }
                 Err(PollError::Port) => {
                     sink.message("error", &format!("Disconnected from {name}"));

@@ -4,6 +4,7 @@ import { Chart, type DragMode } from "@/components/Chart"
 import { Button } from "@/components/ui/button"
 import type { MonitorState } from "@/hooks/useMonitor"
 import { concentration, GAP_THRESHOLD_MS, withGaps } from "@/lib/data"
+import { plotlyLocalTime } from "@/lib/format"
 
 export function ChartControls({
   dragMode,
@@ -46,23 +47,24 @@ interface LiveViewProps {
 }
 
 export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAbort }: LiveViewProps) {
-  const { activeRun, readings, readingsVersion, markers, settings } = state
+  const { activeRun, measurements, measurementsVersion, markers, settings } = state
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
   const [resetCount, setResetCount] = useState(0)
 
   const traces = useMemo(() => {
     const scale = activeRun?.conversionScale ?? settings?.conversionScale ?? 1785.9
     const exponent = activeRun?.conversionExponent ?? settings?.conversionExponent ?? 0.0111
-    const y = readings.counts.map((count) => concentration(count, scale, exponent))
+    const y = measurements.counts.map((count) => concentration(count, scale, exponent))
     if (activeRun) {
-      const minutes = readings.timestamps.map((timestamp) => (timestamp - activeRun.startedAt) / 60_000)
+      const minutes = measurements.timestamps.map((timestamp) => (timestamp - activeRun.startedAt) / 60_000)
       const data = withGaps(minutes, y, GAP_THRESHOLD_MS / 60_000)
       return [{ name: "CO<sub>2</sub>", ...data }]
     }
-    return [{ name: "CO<sub>2</sub>", ...withGaps(readings.timestamps, y, GAP_THRESHOLD_MS) }]
-    // readingsVersion marks in-place updates of readings arrays
+    const data = withGaps(measurements.timestamps, y, GAP_THRESHOLD_MS)
+    return [{ name: "CO<sub>2</sub>", x: data.x.map((timestamp) => plotlyLocalTime(timestamp!)), y: data.y }]
+    // measurementsVersion marks in-place updates of measurements arrays
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRun, settings, readingsVersion])
+  }, [activeRun, settings, measurementsVersion])
 
   const chartMarkers = useMemo(
     () =>
@@ -107,7 +109,7 @@ export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAb
           xTitle={activeRun ? "Time (min)" : "Time"}
           yTitle="CO<sub>2</sub> (ppm)"
           markers={chartMarkers}
-          revision={readingsVersion}
+          revision={measurementsVersion}
           viewKey={`${activeRun?.id ?? "monitor"}-${resetCount}`}
           dragMode={dragMode}
         />

@@ -110,10 +110,10 @@ pub struct Message {
     pub text: String,
 }
 
-/// Readings as parallel arrays: timestamp (ms since epoch) and count N.
+/// Measurements as parallel arrays: timestamp (ms since epoch) and count N.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct Readings {
+pub struct Measurements {
     pub timestamps: Vec<i64>,
     pub counts: Vec<u32>,
 }

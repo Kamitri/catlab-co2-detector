@@ -1,5 +1,4 @@
-import { getCurrentWindow } from "@tauri-apps/api/window"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { AboutView } from "@/components/AboutView"
 import { HistoryView } from "@/components/HistoryView"
@@ -11,9 +10,9 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import icon from "@/assets/icon.png"
 import { useMonitor } from "@/hooks/useMonitor"
-import { api, type Run, type RunParameters, type Settings } from "@/lib/api"
+import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
 
-type DialogState = "start" | "finish" | "marker" | "abort" | "settings" | "close" | null
+type DialogState = "start" | "finish" | "marker" | "abort" | "settings" | "exit" | null
 type View = "live" | "history" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
@@ -43,22 +42,15 @@ export default function App() {
   const [dialog, setDialog] = useState<DialogState>(null)
   const [runs, setRuns] = useState<Run[]>([])
   const [now, setNow] = useState(Date.now())
-  const activeRunRef = useRef(state.activeRun)
-  activeRunRef.current = state.activeRun
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
 
-  // Ask before closing window during run
+  // Exit from tray menu during run requires confirmation
   useEffect(() => {
-    const unlisten = getCurrentWindow().onCloseRequested((event) => {
-      if (activeRunRef.current) {
-        event.preventDefault()
-        setDialog("close")
-      }
-    })
+    const unlisten = events.onExitRequested(() => setDialog("exit"))
     return () => void unlisten.then((dispose) => dispose())
   }, [])
 
@@ -172,13 +164,13 @@ export default function App() {
           }}
         />
       )}
-      {dialog === "close" && (
+      {dialog === "exit" && (
         <ConfirmDialog
           title="Run in progress"
-          action="Close"
+          action="Exit"
           destructive
           onCancel={() => setDialog(null)}
-          onConfirm={() => void getCurrentWindow().destroy()}
+          onConfirm={() => void api.exitApp()}
         />
       )}
       {dialog === "settings" && settings && (

@@ -6,8 +6,8 @@ import {
   type Connection,
   type Marker,
   type Message,
-  type ReadingEvent,
-  type Readings,
+  type MeasurementEvent,
+  type Measurements,
   type Run,
   type RunResult,
   type Settings,
@@ -26,9 +26,9 @@ export interface MonitorState {
   activeRun: Run | null
   recoveredRun: Run | null
   messages: Message[]
-  latest: ReadingEvent | null
-  readings: Readings
-  readingsVersion: number
+  latest: MeasurementEvent | null
+  measurements: Measurements
+  measurementsVersion: number
   markers: Marker[]
   equilibriumAt: number | null
   lastRun: Run | null
@@ -41,24 +41,34 @@ export function useMonitor() {
   const [activeRun, setActiveRun] = useState<Run | null>(null)
   const [recoveredRun, setRecoveredRun] = useState<Run | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
-  const [latest, setLatest] = useState<ReadingEvent | null>(null)
-  const [readingsVersion, setReadingsVersion] = useState(0)
+  const [latest, setLatest] = useState<MeasurementEvent | null>(null)
+  const [measurementsVersion, setMeasurementsVersion] = useState(0)
   const [markers, setMarkers] = useState<Marker[]>([])
   const [equilibriumAt, setEquilibriumAt] = useState<number | null>(null)
   const [lastRun, setLastRun] = useState<Run | null>(null)
   const [lastResult, setLastResult] = useState<RunResult | null>(null)
   const [ready, setReady] = useState(false)
 
-  const readings = useRef<Readings>({ timestamps: [], counts: [] })
+  const measurements = useRef<Measurements>({ timestamps: [], counts: [] })
   const activeRunRef = useRef<Run | null>(null)
   const equilibriumRunId = useRef<number | null>(null)
 
-  const loadReadings = useCallback(async (run: Run | null) => {
+  const loadMeasurements = useCallback(async (run: Run | null) => {
     const now = Date.now()
     const from = run ? run.startedAt : now - MONITOR_SPAN_MS
-    readings.current = await api.getReadings(from, now + 60_000)
+    const loaded = await api.getMeasurements(from, now + 60_000)
+    // Keep measurements that arrived by event while query ran (newer than last loaded measurement)
+    const lastLoaded = loaded.timestamps.length > 0 ? loaded.timestamps[loaded.timestamps.length - 1] : -Infinity
+    const current = measurements.current
+    for (let index = 0; index < current.timestamps.length; index++) {
+      if (current.timestamps[index] > lastLoaded && current.timestamps[index] >= from) {
+        loaded.timestamps.push(current.timestamps[index])
+        loaded.counts.push(current.counts[index])
+      }
+    }
+    measurements.current = loaded
     setMarkers(run ? await api.getMarkers(run.id) : [])
-    setReadingsVersion((version) => version + 1)
+    setMeasurementsVersion((version) => version + 1)
   }, [])
 
   const applyRun = useCallback(
@@ -69,7 +79,7 @@ export function useMonitor() {
         setActiveRun(run)
         if (previous?.id !== run.id) {
           setEquilibriumAt(null)
-          await loadReadings(run)
+          await loadMeasurements(run)
         } else {
           setMarkers(await api.getMarkers(run.id))
         }
@@ -81,10 +91,10 @@ export function useMonitor() {
         setRecoveredRun(null)
         setLastRun(run)
         setLastResult(await api.getRunResult(run.id))
-        await loadReadings(null)
+        await loadMeasurements(null)
       }
     },
-    [loadReadings],
+    [loadMeasurements],
   )
 
   useEffect(() => {
@@ -100,21 +110,21 @@ export function useMonitor() {
       activeRunRef.current = snapshot.activeRun
       setActiveRun(snapshot.activeRun)
       setRecoveredRun(snapshot.activeRun)
-      await loadReadings(snapshot.activeRun)
-      const lastIndex = readings.current.timestamps.length - 1
-      if (lastIndex >= 0 && Date.now() - readings.current.timestamps[lastIndex] < 5000) {
-        setLatest({ timestamp: readings.current.timestamps[lastIndex], count: readings.current.counts[lastIndex] })
+      await loadMeasurements(snapshot.activeRun)
+      const lastIndex = measurements.current.timestamps.length - 1
+      if (lastIndex >= 0 && Date.now() - measurements.current.timestamps[lastIndex] < 5000) {
+        setLatest({ timestamp: measurements.current.timestamps[lastIndex], count: measurements.current.counts[lastIndex] })
       }
       setReady(true)
     }
 
     unlisteners.push(
-      events.onReading((reading) => {
-        const current = readings.current
-        current.timestamps.push(reading.timestamp)
-        current.counts.push(reading.count)
+      events.onMeasurement((measurement) => {
+        const current = measurements.current
+        current.timestamps.push(measurement.timestamp)
+        current.counts.push(measurement.count)
         if (!activeRunRef.current) {
-          const cutoff = reading.timestamp - MONITOR_SPAN_MS
+          const cutoff = measurement.timestamp - MONITOR_SPAN_MS
           let drop = 0
           while (drop < current.timestamps.length && current.timestamps[drop] < cutoff) drop++
           if (drop > 0) {
@@ -122,8 +132,8 @@ export function useMonitor() {
             current.counts.splice(0, drop)
           }
         }
-        setLatest(reading)
-        setReadingsVersion((version) => version + 1)
+        setLatest(measurement)
+        setMeasurementsVersion((version) => version + 1)
       }),
       events.onConnection(setConnection),
       events.onMessage((message) => setMessages((list) => [...list.slice(-(MESSAGE_LIMIT - 1)), message])),
@@ -135,13 +145,13 @@ export function useMonitor() {
       disposed = true
       unlisteners.forEach((unlisten) => void unlisten.then((dispose) => dispose()))
     }
-  }, [applyRun, loadReadings])
+  }, [applyRun, loadMeasurements])
 
   // Equilibrium detection during run; reported once per run
   useEffect(() => {
     const run = activeRun
     if (!run || !settings || equilibriumRunId.current === run.id) return
-    const series = runSeries(run, readings.current)
+    const series = runSeries(run, measurements.current)
     const reached = detectEquilibrium(series, {
       bandPercent: settings.equilibriumBandPercent,
       durationS: settings.equilibriumDurationS,
@@ -153,7 +163,7 @@ export function useMonitor() {
       setEquilibriumAt(reached)
       void api.logMessage("info", `Equilibrium reached at ${formatDuration(reached)}`)
     }
-  }, [activeRun, settings, readingsVersion])
+  }, [activeRun, settings, measurementsVersion])
 
   const state: MonitorState = {
     ready,
@@ -163,8 +173,8 @@ export function useMonitor() {
     recoveredRun,
     messages,
     latest,
-    readings: readings.current,
-    readingsVersion,
+    measurements: measurements.current,
+    measurementsVersion,
     markers,
     equilibriumAt,
     lastRun,

@@ -1,8 +1,7 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { useEffect, useRef } from "react"
 
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { MessageLog } from "@/components/MessageLog"
 import { Separator } from "@/components/ui/separator"
 import type { MonitorState } from "@/hooks/useMonitor"
 import { concentration, GAP_THRESHOLD_MS } from "@/lib/data"
@@ -27,26 +26,18 @@ function Section({ title, children }: { title: React.ReactNode; children: React.
   )
 }
 
-const LEVEL_COLORS = { info: "text-foreground", warning: "text-amber-600", error: "text-red-600" }
-
 export function StatusPanel({ state, now }: { state: MonitorState; now: number }) {
-  const { connection, latest, activeRun, settings, readings, equilibriumAt, lastRun, lastResult, messages } = state
-  const messageEnd = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    messageEnd.current?.scrollIntoView({ block: "end" })
-  }, [messages.length])
-
+  const { connection, latest, activeRun, settings, measurements, equilibriumAt, lastRun, lastResult, messages } = state
   const scale = activeRun?.conversionScale ?? settings?.conversionScale ?? 1785.9
   const exponent = activeRun?.conversionExponent ?? settings?.conversionExponent ?? 0.0111
   const fresh = latest !== null && now - latest.timestamp < 3000
   const connected = connection.state === "connected"
 
-  // Time without readings (s): intervals longer than gap threshold, minus 1 s expected interval
+  // Time without measurements (s): intervals longer than gap threshold, minus 1 s expected interval
   let missingS = 0
   if (activeRun) {
-    for (let index = 1; index < readings.timestamps.length; index++) {
-      const interval = readings.timestamps[index] - readings.timestamps[index - 1]
+    for (let index = 1; index < measurements.timestamps.length; index++) {
+      const interval = measurements.timestamps[index] - measurements.timestamps[index - 1]
       if (interval > GAP_THRESHOLD_MS) missingS += interval / 1000 - 1
     }
   }
@@ -82,7 +73,7 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
           <Row label="Sample" value={activeRun.parameters.sample} />
           <Row label="Elapsed" value={formatDuration((now - activeRun.startedAt) / 1000)} />
           <Row label="Delay time" value={`${formatInteger(activeRun.parameters.delayS)} s`} />
-          <Row label="Samples" value={formatInteger(readings.timestamps.length)} />
+          <Row label="Samples" value={formatInteger(measurements.timestamps.length)} />
           <Row label="Missing data" value={`${formatInteger(missingS)} s`} />
           <Row label="Equilibrium" value={equilibriumAt !== null ? formatDuration(equilibriumAt) : "–"} />
         </Section>
@@ -109,20 +100,7 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
         </Section>
       )}
       <Separator />
-      <div className="flex min-h-0 flex-1 flex-col">
-        <h3 className="px-4 pt-3 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Messages</h3>
-        <ScrollArea className="min-h-0 flex-1">
-          <ul className="space-y-1 px-4 pb-3">
-            {messages.map((message) => (
-              <li key={message.id} className="flex gap-2 text-xs leading-5">
-                <span className="shrink-0 text-muted-foreground tabular-nums">{formatClock(message.timestamp)}</span>
-                <span className={cn("break-words", LEVEL_COLORS[message.level] ?? "")}>{message.text}</span>
-              </li>
-            ))}
-          </ul>
-          <div ref={messageEnd} />
-        </ScrollArea>
-      </div>
+      <MessageLog messages={messages} />
     </aside>
   )
 }

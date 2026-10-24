@@ -12,15 +12,15 @@ use co2_monitor_lib::model::Connection;
 
 #[derive(Default)]
 struct Recorder {
-    readings: Mutex<Vec<(i64, u32)>>,
+    measurements: Mutex<Vec<(i64, u32)>>,
     connections: Mutex<Vec<Connection>>,
     messages: Mutex<Vec<String>>,
     ports: Vec<String>,
 }
 
 impl Sink for Recorder {
-    fn reading(&self, timestamp: i64, count: u32) {
-        self.readings.lock().unwrap().push((timestamp, count));
+    fn measurement(&self, timestamp: i64, count: u32) {
+        self.measurements.lock().unwrap().push((timestamp, count));
     }
     fn connection(&self, connection: Connection) {
         self.connections.lock().unwrap().push(connection);
@@ -90,17 +90,17 @@ fn connects_polls_and_reconnects() {
     let device = VirtualDevice::start(directory.path());
     let connected = Connection::Connected { port: app_port.clone() };
     assert!(wait_for(|| recorder.connections.lock().unwrap().contains(&connected), Duration::from_secs(10)));
-    assert!(wait_for(|| recorder.readings.lock().unwrap().len() >= 3, Duration::from_secs(10)));
-    assert_eq!(recorder.readings.lock().unwrap()[0].1, 35);
+    assert!(wait_for(|| recorder.measurements.lock().unwrap().len() >= 3, Duration::from_secs(10)));
+    assert_eq!(recorder.measurements.lock().unwrap()[0].1, 35);
 
-    // Unplug: readings stop and loop goes back to searching
+    // Unplug: measurements stop and loop goes back to searching
     device.stop();
-    let count_before = recorder.readings.lock().unwrap().len();
+    let count_before = recorder.measurements.lock().unwrap().len();
     assert!(wait_for(
         || recorder.messages.lock().unwrap().iter().any(|text| text.starts_with("Disconnected")),
         Duration::from_secs(10)
     ));
-    assert!(recorder.readings.lock().unwrap().len() <= count_before + 1);
+    assert!(recorder.measurements.lock().unwrap().len() <= count_before + 1);
 
     // Plug back in: loop reconnects without user action
     let device = VirtualDevice::start(directory.path());
@@ -108,11 +108,11 @@ fn connects_polls_and_reconnects() {
         || recorder.connections.lock().unwrap().iter().filter(|connection| **connection == connected).count() >= 2,
         Duration::from_secs(15)
     ));
-    assert!(wait_for(|| recorder.readings.lock().unwrap().len() >= count_before + 3, Duration::from_secs(10)));
+    assert!(wait_for(|| recorder.measurements.lock().unwrap().len() >= count_before + 3, Duration::from_secs(10)));
 
-    // Readings arrive about once per second
-    let readings = recorder.readings.lock().unwrap().clone();
-    let last = &readings[readings.len() - 3..];
+    // Measurements arrive about once per second
+    let measurements = recorder.measurements.lock().unwrap().clone();
+    let last = &measurements[measurements.len() - 3..];
     for pair in last.windows(2) {
         let interval = pair[1].0 - pair[0].0;
         assert!((800..=1300).contains(&interval), "Interval {interval} ms");

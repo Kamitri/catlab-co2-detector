@@ -1,7 +1,7 @@
-# CO2 NDIR Monitor: serial protocol and conversion
+# CO₂ NDIR Monitor: serial protocol and conversion
 
-This document describes how `CO2 NDIR Monitor.exe` communicates with the CO2 NDIR
-detector and how it converts the reply into a CO2 value. The results come from
+This document describes how `CO2 NDIR Monitor.exe` communicates with the CO₂ NDIR
+detector and how it converts the reply into a CO₂ value. The results come from
 static analysis of the executable with REA and Ghidra 12.1.4. The conversion is
 verified against every logged value in `CO2 NDIR Monitor/KQ/` and
 `CO2 NDIR Monitor/Nhả hấp phụ/` (about 94,000 values, 0 mismatches).
@@ -58,19 +58,19 @@ screenshot of the Protocol data tab:
 
 The application does not verify the checksum.
 
-## Conversion to CO2 concentration
+## Conversion to CO₂ concentration
 
 `ComPortRxChar` (0x4ad90c) computes the displayed value as
 
 ```
-CO2 = 1785.9 * exp(0.0111 * N)
+CO₂ = 1785.9 * exp(0.0111 * N)
 ```
 
 The constants are 80-bit floating-point values at 0x4adcf0 (1785.9) and 0x4adce4
 (0.0111). The exponential is the Delphi runtime routine at 0x402a08. The display
 uses the format `%5.0f`, so 6841.6 is shown as 6842.
 
-| N   | CO2       |
+| N   | CO₂       |
 | --- | --------- |
 | 0   | 1785.9    |
 | 120 | 6766.08   |
@@ -101,7 +101,7 @@ should parse fixed 8-byte frames and verify the checksum.
 
 ## Saved data files
 
-The Save function writes 1 line per sample: the sample index and the CO2 value,
+The Save function writes 1 line per sample: the sample index and the CO₂ value,
 separated by a space. The decimal separator follows the Windows locale, which is
 the reason some files use a comma. At 1 sample per second, the index is the
 elapsed time in seconds.
@@ -113,7 +113,7 @@ import math
 
 
 def decode_reply(frame: bytes) -> float:
-    """Return the CO2 value encoded in one 8-byte reply frame."""
+    """Return the CO₂ value encoded in one 8-byte reply frame."""
     if len(frame) != 8 or frame[0] != 0x40 or frame[7] != 0x21:
         raise ValueError(f"Invalid frame: {frame.hex(' ')}")
     checksum = 0

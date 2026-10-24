@@ -59,7 +59,7 @@ export interface Message {
   text: string
 }
 
-export interface Readings {
+export interface Measurements {
   timestamps: number[]
   counts: number[]
 }
@@ -95,14 +95,14 @@ export interface Snapshot {
   settings: Settings
 }
 
-export interface ReadingEvent {
+export interface MeasurementEvent {
   timestamp: number
   count: number
 }
 
 export const api = {
   getSnapshot: () => invoke<Snapshot>("get_snapshot"),
-  getReadings: (from: number, to: number) => invoke<Readings>("get_readings", { from, to }),
+  getMeasurements: (from: number, to: number) => invoke<Measurements>("get_measurements", { from, to }),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   startRun: (parameters: RunParameters) => invoke<Run>("start_run", { parameters }),
   updateRun: (id: number, parameters: RunParameters) => invoke<Run>("update_run", { id, parameters }),
@@ -117,14 +117,16 @@ export const api = {
   logMessage: (level: MessageLevel, text: string) => invoke<void>("log_message", { level, text }),
   defaultFolder: () => invoke<string>("default_folder"),
   dataFolder: () => invoke<string>("data_folder"),
+  exitApp: () => invoke<void>("exit_app"),
 }
 
 export const events = {
-  onReading: (handler: (event: ReadingEvent) => void): Promise<UnlistenFn> =>
-    listen<ReadingEvent>("reading", (event) => handler(event.payload)),
+  onMeasurement: (handler: (event: MeasurementEvent) => void): Promise<UnlistenFn> =>
+    listen<MeasurementEvent>("measurement", (event) => handler(event.payload)),
   onConnection: (handler: (connection: Connection) => void): Promise<UnlistenFn> =>
     listen<Connection>("connection", (event) => handler(event.payload)),
   onMessage: (handler: (message: Message) => void): Promise<UnlistenFn> =>
     listen<Message>("message", (event) => handler(event.payload)),
   onRun: (handler: (run: Run) => void): Promise<UnlistenFn> => listen<Run>("run", (event) => handler(event.payload)),
+  onExitRequested: (handler: () => void): Promise<UnlistenFn> => listen("exit-requested", () => handler()),
 }

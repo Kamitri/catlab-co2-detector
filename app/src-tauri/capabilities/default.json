@@ -7,7 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "core:window:allow-destroy",
     "dialog:default",
     "opener:default",
     "opener:allow-reveal-item-in-dir",

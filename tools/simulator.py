@@ -1,8 +1,7 @@
-"""Detector simulator for development: answers poll requests on serial port with values from legacy result file."""
+"""Detector simulator for development: replies to poll requests on serial port with values from legacy result file."""
 
 import math
-import sys
-import time
+from typing import Annotated
 
 import serial
 import typer
@@ -39,13 +38,13 @@ def load_counts(path: str) -> list[int]:
 
 
 def main(
-    port: str = typer.Argument(..., help="Serial port of simulated detector"),
-    data: str = typer.Option("", help="Legacy result file to replay"),
-    step: int = typer.Option(1, help="Samples to advance per request"),
-    corrupt_every: int = typer.Option(0, help="Send bad checksum every N replies (0 disables)"),
-    offset: int = typer.Option(0, help="Index of first sample to replay"),
+    port: Annotated[str, typer.Argument(help="Serial port of simulated detector")],
+    data: Annotated[str, typer.Option(help="Legacy result file to replay")] = "",
+    step: Annotated[int, typer.Option(help="Samples to advance per request")] = 1,
+    corrupt_every: Annotated[int, typer.Option(help="Send bad checksum every N replies (0 disables)")] = 0,
+    offset: Annotated[int, typer.Option(help="Index of first sample to replay")] = 0,
 ) -> None:
-    """Answer poll requests like CO2 NDIR detector."""
+    """Reply to poll requests like CO₂ NDIR detector."""
     counts = load_counts(data) if data else [35] * 60 + [260] * 600
     connection = serial.Serial(port, 19200, timeout=0.1)
     buffer = b""

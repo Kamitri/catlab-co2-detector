@@ -1,25 +1,28 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
-import { Chart, CHART_COLORS, type ChartTrace, type DragMode } from "@/components/Chart"
+import { Chart, type ChartTrace, type DragMode } from "@/components/Chart"
 import { ChartControls } from "@/components/LiveView"
 import { ConfirmDialog } from "@/components/RunDialogs"
-import { RunFields, toParameters, useRunForm } from "@/components/RunForm"
+import { RunFields } from "@/components/RunForm"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { api, type Marker, type Readings, type Run, type RunResult } from "@/lib/api"
+import { useRunForm } from "@/hooks/useRunForm"
+import { api, type Marker, type Measurements, type Run, type RunResult } from "@/lib/api"
 import { GAP_THRESHOLD_MS, runSeries, withGaps } from "@/lib/data"
 import { formatDateTime, formatDuration, formatInteger, formatNumber } from "@/lib/format"
+import { toParameters } from "@/lib/runForm"
+import { CHART_COLORS } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 const STATUS_LABELS = { running: "Running", finished: "Finished", aborted: "Aborted" }
 
 interface RunData {
-  readings: Readings
+  measurements: Measurements
   markers: Marker[]
 }
 
@@ -124,8 +127,12 @@ function RunDetail({
           onCancel={() => setConfirmDelete(false)}
           onConfirm={async () => {
             setConfirmDelete(false)
-            await api.deleteRun(run.id)
-            onDeleted()
+            try {
+              await api.deleteRun(run.id)
+              onDeleted()
+            } catch (error) {
+              await api.logMessage("error", String(error))
+            }
           }}
         />
       )}
@@ -164,8 +171,8 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
     if (missing.length === 0) return
     void Promise.all(
       missing.map(async (run) => {
-        const readings = await api.getReadings(run.startedAt, run.finishedAt ?? Date.now())
-        return [run.id, { readings, markers: await api.getMarkers(run.id) }] as const
+        const measurements = await api.getMeasurements(run.startedAt, run.finishedAt ?? Date.now())
+        return [run.id, { measurements, markers: await api.getMarkers(run.id) }] as const
       }),
     ).then((entries) => setData((current) => ({ ...current, ...Object.fromEntries(entries) })))
   }, [shown, data])
@@ -176,7 +183,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
       shown
         .filter((run) => data[run.id])
         .map((run, index) => {
-          const series = runSeries(run, data[run.id].readings)
+          const series = runSeries(run, data[run.id].measurements)
           const result = results[run.id]
           if (!overlay) {
             const minutes = series.x.map((seconds) => seconds / 60)

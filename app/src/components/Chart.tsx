@@ -1,16 +1,11 @@
 import Plotly from "plotly.js-dist-min"
 import { useEffect, useRef } from "react"
 
-export const CHART_COLORS = ["#007e85", "#e0533d", "#3f9b4f", "#d99a1e", "#7a5cd6", "#2f6fd0", "#c94f8c", "#5f6b74"]
-
-const FONT = "Geist Variable, ui-sans-serif, system-ui, sans-serif"
-const TEXT_COLOR = "#121c23"
-const MUTED_COLOR = "#5f6b74"
-const GRID_COLOR = "#e7ecee"
+import { CHART_COLORS, CHART_FONT, GRID_COLOR, MUTED_COLOR, TEXT_COLOR } from "@/lib/theme"
 
 export interface ChartTrace {
   name: string
-  x: (number | null)[]
+  x: (number | string | null)[]
   y: (number | null)[]
   color?: string
 }
@@ -34,7 +29,6 @@ interface ChartProps {
   viewKey: string
   dragMode: DragMode
   showLegend?: boolean
-  onUserZoom?: () => void
 }
 
 export function Chart({
@@ -47,11 +41,8 @@ export function Chart({
   viewKey,
   dragMode,
   showLegend = false,
-  onUserZoom,
 }: ChartProps) {
   const container = useRef<HTMLDivElement>(null)
-  const zoomHandler = useRef(onUserZoom)
-  zoomHandler.current = onUserZoom
 
   useEffect(() => {
     const element = container.current
@@ -78,12 +69,12 @@ export function Chart({
       uirevision: viewKey,
       datarevision: revision,
       dragmode: dragMode,
-      font: { family: FONT, size: 12, color: TEXT_COLOR },
+      font: { family: CHART_FONT, size: 12, color: TEXT_COLOR },
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
       margin: { l: 64, r: 16, t: 24, b: 48 },
       hovermode: "x unified",
-      hoverlabel: { bgcolor: "#ffffff", bordercolor: GRID_COLOR, font: { family: FONT, color: TEXT_COLOR } },
+      hoverlabel: { bgcolor: "#ffffff", bordercolor: GRID_COLOR, font: { family: CHART_FONT, color: TEXT_COLOR } },
       showlegend: showLegend,
       legend: { orientation: "h", x: 0, y: 1.08, font: { size: 11 } },
       xaxis: {
@@ -124,22 +115,11 @@ export function Chart({
   }, [traces, xType, xTitle, yTitle, markers, revision, viewKey, dragMode, showLegend])
 
   useEffect(() => {
-    const element = container.current as
-      | (HTMLDivElement & { on?: (event: string, handler: (data: Record<string, unknown>) => void) => void })
-      | null
+    const element = container.current
     if (!element) return
-    const handle = (event: Record<string, unknown>) => {
-      const keys = Object.keys(event)
-      if (keys.some((key) => key.startsWith("xaxis.range") || key.startsWith("yaxis.range"))) zoomHandler.current?.()
-    }
-    // Plotly attaches `on` after first render
-    const timer = window.setTimeout(() => element.on?.("plotly_relayout", handle), 0)
     const observer = new ResizeObserver(() => void Plotly.Plots.resize(element))
     observer.observe(element)
-    return () => {
-      window.clearTimeout(timer)
-      observer.disconnect()
-    }
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {

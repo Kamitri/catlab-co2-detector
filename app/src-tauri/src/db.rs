@@ -1,10 +1,10 @@
-//! SQLite storage. Every reading is written as it arrives; a run is a time interval over readings.
+//! SQLite storage. Every measurement is written as it arrives; a run is a time interval over measurements.
 
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::model::{Marker, Message, Readings, Run, RunParameters, RunStatus, Settings};
+use crate::model::{Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
 
@@ -17,8 +17,9 @@ impl Database {
         let connection = Connection::open(path)?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "synchronous", "FULL")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.execute_batch(
-            "CREATE TABLE IF NOT EXISTS readings (
+            "CREATE TABLE IF NOT EXISTS measurements (
                 timestamp INTEGER PRIMARY KEY,
                 count INTEGER NOT NULL
             );
@@ -52,34 +53,34 @@ impl Database {
         Ok(Self { connection })
     }
 
-    pub fn insert_reading(&self, timestamp: i64, count: u32) -> DbResult<()> {
+    pub fn insert_measurement(&self, timestamp: i64, count: u32) -> DbResult<()> {
         self.connection.execute(
-            "INSERT OR REPLACE INTO readings (timestamp, count) VALUES (?1, ?2)",
+            "INSERT OR REPLACE INTO measurements (timestamp, count) VALUES (?1, ?2)",
             params![timestamp, count],
         )?;
         Ok(())
     }
 
-    pub fn readings(&self, from: i64, to: i64) -> DbResult<Readings> {
+    pub fn measurements(&self, from: i64, to: i64) -> DbResult<Measurements> {
         let mut statement = self.connection.prepare_cached(
-            "SELECT timestamp, count FROM readings WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp",
+            "SELECT timestamp, count FROM measurements WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp",
         )?;
-        let mut readings = Readings::default();
+        let mut measurements = Measurements::default();
         let rows = statement.query_map(params![from, to], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u32>(1)?)))?;
         for row in rows {
             let (timestamp, count) = row?;
-            readings.timestamps.push(timestamp);
-            readings.counts.push(count);
+            measurements.timestamps.push(timestamp);
+            measurements.counts.push(count);
         }
-        Ok(readings)
+        Ok(measurements)
     }
 
-    /// Deletes readings older than cutoff that do not belong to any run.
-    pub fn prune_readings(&self, cutoff: i64) -> DbResult<usize> {
+    /// Deletes measurements older than cutoff that do not belong to any run.
+    pub fn prune_measurements(&self, cutoff: i64) -> DbResult<usize> {
         self.connection.execute(
-            "DELETE FROM readings WHERE timestamp < ?1 AND NOT EXISTS (
-                SELECT 1 FROM runs WHERE readings.timestamp >= runs.started_at
-                AND readings.timestamp <= COALESCE(runs.finished_at, 9223372036854775807))",
+            "DELETE FROM measurements WHERE timestamp < ?1 AND NOT EXISTS (
+                SELECT 1 FROM runs WHERE measurements.timestamp >= runs.started_at
+                AND measurements.timestamp <= COALESCE(runs.finished_at, 9223372036854775807))",
             params![cutoff],
         )
     }
@@ -115,9 +116,19 @@ impl Database {
     }
 
     pub fn delete_run(&self, id: i64) -> DbResult<()> {
-        self.connection.execute("DELETE FROM markers WHERE run_id = ?1", params![id])?;
-        self.connection.execute("DELETE FROM runs WHERE id = ?1", params![id])?;
-        Ok(())
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute("DELETE FROM markers WHERE run_id = ?1", params![id])?;
+        transaction.execute("DELETE FROM runs WHERE id = ?1", params![id])?;
+        transaction.commit()
+    }
+
+    /// Returns sample names of runs that use given run as blank run.
+    pub fn runs_using_blank(&self, id: i64) -> DbResult<Vec<String>> {
+        let mut statement = self.connection.prepare(
+            "SELECT json_extract(parameters, '$.sample') FROM runs WHERE json_extract(parameters, '$.blankRunId') = ?1",
+        )?;
+        let rows = statement.query_map(params![id], |row| row.get::<_, Option<String>>(0))?;
+        rows.map(|row| row.map(Option::unwrap_or_default)).collect()
     }
 
     fn run_from_row(row: &rusqlite::Row) -> DbResult<Run> {
@@ -158,9 +169,8 @@ impl Database {
     }
 
     pub fn runs(&self) -> DbResult<Vec<Run>> {
-        let mut statement = self
-            .connection
-            .prepare(&format!("SELECT {} FROM runs ORDER BY started_at DESC", Self::RUN_COLUMNS))?;
+        let mut statement =
+            self.connection.prepare(&format!("SELECT {} FROM runs ORDER BY started_at DESC", Self::RUN_COLUMNS))?;
         let rows = statement.query_map([], Self::run_from_row)?;
         rows.collect()
     }
@@ -171,6 +181,11 @@ impl Database {
             params![run_id, timestamp, label],
         )?;
         Ok(Marker { id: self.connection.last_insert_rowid(), run_id, timestamp, label: label.into() })
+    }
+
+    pub fn delete_markers(&self, run_id: i64, label: &str) -> DbResult<()> {
+        self.connection.execute("DELETE FROM markers WHERE run_id = ?1 AND label = ?2", params![run_id, label])?;
+        Ok(())
     }
 
     pub fn markers(&self, run_id: i64) -> DbResult<Vec<Marker>> {
@@ -192,9 +207,8 @@ impl Database {
     }
 
     pub fn recent_messages(&self, limit: u32) -> DbResult<Vec<Message>> {
-        let mut statement = self
-            .connection
-            .prepare("SELECT id, timestamp, level, text FROM messages ORDER BY id DESC LIMIT ?1")?;
+        let mut statement =
+            self.connection.prepare("SELECT id, timestamp, level, text FROM messages ORDER BY id DESC LIMIT ?1")?;
         let rows = statement.query_map(params![limit], |row| {
             Ok(Message { id: row.get(0)?, timestamp: row.get(1)?, level: row.get(2)?, text: row.get(3)? })
         })?;
@@ -230,24 +244,35 @@ mod tests {
             let database = Database::open(&path).unwrap();
             let parameters = RunParameters { sample: "Na-ZY".into(), mass_g: 0.56, ..Default::default() };
             database.insert_run(1000, 1785.9, 0.0111, &parameters).unwrap();
-            database.insert_reading(1500, 120).unwrap();
+            database.insert_measurement(1500, 120).unwrap();
         }
         let database = Database::open(&path).unwrap();
         let run = database.active_run().unwrap().unwrap();
         assert_eq!(run.parameters.sample, "Na-ZY");
-        assert_eq!(database.readings(0, 2000).unwrap().counts, vec![120]);
+        assert_eq!(database.measurements(0, 2000).unwrap().counts, vec![120]);
     }
 
     #[test]
-    fn prune_keeps_run_readings() {
+    fn prune_keeps_run_measurements() {
         let directory = tempfile::tempdir().unwrap();
         let database = Database::open(&directory.path().join("test.db")).unwrap();
         let run_id = database.insert_run(1000, 1785.9, 0.0111, &RunParameters::default()).unwrap();
         database.set_status(run_id, RunStatus::Finished, Some(2000)).unwrap();
         for timestamp in [500, 1500, 2500] {
-            database.insert_reading(timestamp, 100).unwrap();
+            database.insert_measurement(timestamp, 100).unwrap();
         }
-        database.prune_readings(3000).unwrap();
-        assert_eq!(database.readings(0, 3000).unwrap().timestamps, vec![1500]);
+        database.prune_measurements(3000).unwrap();
+        assert_eq!(database.measurements(0, 3000).unwrap().timestamps, vec![1500]);
+    }
+
+    #[test]
+    fn finds_runs_using_blank() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(&directory.path().join("test.db")).unwrap();
+        let blank = database.insert_run(1000, 1785.9, 0.0111, &RunParameters::default()).unwrap();
+        let parameters = RunParameters { sample: "Na-ZY".into(), blank_run_id: Some(blank), ..Default::default() };
+        database.insert_run(2000, 1785.9, 0.0111, &parameters).unwrap();
+        assert_eq!(database.runs_using_blank(blank).unwrap(), vec!["Na-ZY".to_string()]);
+        database.delete_markers(blank, "Valve open").unwrap();
     }
 }
