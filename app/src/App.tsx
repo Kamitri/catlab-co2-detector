@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { AboutView } from "@/components/AboutView"
 import { HistoryView } from "@/components/HistoryView"
@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import icon from "@/assets/icon.png"
 import { useMonitor } from "@/hooks/useMonitor"
+import { PrecisionContext } from "@/hooks/usePrecision"
+import { useTheme } from "@/hooks/useTheme"
 import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
+import { DEFAULT_SETTINGS, decimals } from "@/lib/settings"
 
 type DialogState = "sample" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | null
 type View = "live" | "history" | "about"
@@ -77,9 +80,17 @@ export default function App() {
 
   const { activeRun, settings } = state
   const finishedRuns = runs.filter((run) => run.status !== "running")
+  useTheme(settings?.theme)
+  const precision = useMemo(
+    () => ({
+      massG: decimals(settings?.massPrecisionG ?? DEFAULT_SETTINGS.massPrecisionG),
+      soapVolumeMl: decimals(settings?.soapVolumePrecisionMl ?? DEFAULT_SETTINGS.soapVolumePrecisionMl),
+    }),
+    [settings?.massPrecisionG, settings?.soapVolumePrecisionMl],
+  )
 
-  return (
-    <div className="flex h-screen flex-col bg-background text-foreground select-none">
+  const content = (
+    <div className="flex h-screen flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center gap-6 border-b px-4">
         <div className="flex items-center gap-2">
           <img src={icon} alt="" className="size-6" draggable={false} />
@@ -222,4 +233,5 @@ export default function App() {
       )}
     </div>
   )
+  return <PrecisionContext.Provider value={precision}>{content}</PrecisionContext.Provider>
 }

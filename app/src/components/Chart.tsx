@@ -1,7 +1,8 @@
 import Plotly from "plotly.js-dist-min"
 import { useEffect, useRef, useState } from "react"
 
-import { CHART_COLORS, CHART_FONT, GRID_COLOR, MUTED_COLOR, TEXT_COLOR } from "@/lib/theme"
+import { useDarkMode } from "@/hooks/useTheme"
+import { CHART_FONT, chartPalette } from "@/lib/theme"
 import type { View } from "@/lib/view"
 
 export interface ChartTrace {
@@ -89,6 +90,7 @@ export function Chart({
   // True while Plotly.react applies view from props; relayout events then come from app, not user
   const applying = useRef(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
+  const palette = chartPalette(useDarkMode())
   // Pointer on chart shows hover line of Plotly; outside chart, line at newest data point is shown
   const [pointerInside, setPointerInside] = useState(false)
   const showLatest = latest !== undefined && !pointerInside
@@ -104,7 +106,7 @@ export function Chart({
       y: trace.y,
       customdata: trace.customdata as Plotly.Datum[] | undefined,
       connectgaps: false,
-      line: { color: trace.color ?? CHART_COLORS[index % CHART_COLORS.length], width: 1.75 },
+      line: { color: trace.color ?? palette.series[index % palette.series.length], width: 1.75 },
       hovertemplate: trace.hovertemplate ?? "%{y:,.4~f}<extra>%{fullData.name}</extra>",
     }))
     // Empty trace makes Plotly draw clock axis
@@ -112,11 +114,11 @@ export function Chart({
       data.push({ type: "scatter", x: [], y: [], xaxis: "x2", hoverinfo: "skip", showlegend: false })
     }
     const axis = {
-      gridcolor: GRID_COLOR,
+      gridcolor: palette.grid,
       zeroline: false,
-      linecolor: GRID_COLOR,
-      tickcolor: GRID_COLOR,
-      tickfont: { color: MUTED_COLOR, size: 11 },
+      linecolor: palette.grid,
+      tickcolor: palette.grid,
+      tickfont: { color: palette.muted, size: 11 },
       automargin: true,
       autorange: false,
     }
@@ -128,7 +130,7 @@ export function Chart({
       x1: marker.x,
       y0: 0,
       y1: 1,
-      line: { color: MUTED_COLOR, width: 1, dash: "dot" },
+      line: { color: palette.muted, width: 1, dash: "dot" },
     }))
     const annotations: Partial<Plotly.Annotations>[] = markers.map((marker) => ({
       x: marker.x,
@@ -142,8 +144,8 @@ export function Chart({
       xshift: 2,
       text: marker.label,
       showarrow: false,
-      bgcolor: "rgba(255,255,255,0.85)",
-      font: { size: 11, color: MUTED_COLOR },
+      bgcolor: palette.label,
+      font: { size: 11, color: palette.muted },
     }))
     if (showLatest) {
       // Same line as hover line of Plotly; label on side of line with more room
@@ -156,7 +158,7 @@ export function Chart({
         x1: latest.x,
         y0: 0,
         y1: 1,
-        line: { color: TEXT_COLOR, width: 1, dash: "dot" },
+        line: { color: palette.text, width: 1, dash: "dot" },
       })
       annotations.push({
         x: latest.x,
@@ -168,28 +170,28 @@ export function Chart({
         text: latest.text,
         align: "left",
         showarrow: false,
-        bgcolor: "#ffffff",
-        bordercolor: GRID_COLOR,
+        bgcolor: palette.label,
+        bordercolor: palette.grid,
         borderpad: 4,
-        font: { size: 12, color: TEXT_COLOR },
+        font: { size: 12, color: palette.text },
       })
     }
     const layout: Partial<Plotly.Layout> = {
       datarevision: revision,
       dragmode: spaceHeld ? "pan" : dragMode,
-      font: { family: CHART_FONT, size: 12, color: TEXT_COLOR },
+      font: { family: CHART_FONT, size: 12, color: palette.text },
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
       margin: { l: 64, r: 16, t: clockStart === undefined ? 24 : 36, b: 48 },
       hovermode: "x unified",
-      hoverlabel: { bgcolor: "#ffffff", bordercolor: GRID_COLOR, font: { family: CHART_FONT, color: TEXT_COLOR } },
+      hoverlabel: { bgcolor: palette.label, bordercolor: palette.grid, font: { family: CHART_FONT, color: palette.text } },
       showlegend: showLegend,
       legend: { orientation: "h", x: 0, y: 1.08, font: { size: 11 } },
       xaxis: {
         ...axis,
         type: "linear",
         range: [...view.x],
-        title: { text: xTitle, font: { size: 12, color: MUTED_COLOR } },
+        title: { text: xTitle, font: { size: 12, color: palette.muted } },
         hoverformat: ",.0f",
         tickformat: ",~r",
       },
@@ -209,7 +211,7 @@ export function Chart({
       yaxis: {
         ...axis,
         range: [...view.y],
-        title: { text: yTitle, font: { size: 12, color: MUTED_COLOR } },
+        title: { text: yTitle, font: { size: 12, color: palette.muted } },
         tickformat: ",~r",
       },
       shapes,
@@ -227,7 +229,7 @@ export function Chart({
     void Plotly.react(element, data, layout, config).finally(() => {
       applying.current = false
     })
-  }, [traces, xTitle, yTitle, markers, revision, view, dragMode, spaceHeld, showLegend, clockStart, latest, showLatest])
+  }, [traces, xTitle, yTitle, markers, revision, view, dragMode, spaceHeld, showLegend, clockStart, latest, showLatest, palette])
 
   // Zoom, pan, and wheel zoom by user report new view
   useEffect(() => {

@@ -18,7 +18,8 @@ import { api, type Marker, type Measurements, type Run, type RunResult } from "@
 import { GAP_THRESHOLD_MS, runSeries, withGaps } from "@/lib/data"
 import { formatDateTime, formatDuration, formatInteger, formatNumber } from "@/lib/format"
 import { toParameters } from "@/lib/runForm"
-import { CHART_COLORS } from "@/lib/theme"
+import { useDarkMode } from "@/hooks/useTheme"
+import { chartPalette } from "@/lib/theme"
 import { DEFAULT_CO2_RANGE, DEFAULT_RATIO_RANGE, defaultView } from "@/lib/view"
 import { cn } from "@/lib/utils"
 
@@ -42,8 +43,7 @@ function ResultTable({ result }: { result: RunResult }) {
     ["Blank time", `${formatNumber(result.blankTimeS, 1)} s`],
     ["GHSV", `${formatInteger(result.ghsvPerH)} 1/h`],
     [<>CO<sub>2</sub> adsorbed</>, `${formatNumber(result.adsorbedVolumeL === null ? null : result.adsorbedVolumeL * 1000, 3)} mL`],
-    ["Capacity", `${formatNumber(result.capacityMgG)} mg/g`],
-    ["Capacity", `${formatNumber(result.capacityMmolG, 3)} mmol/g`],
+    ["Capacity", `${formatNumber(result.capacityMgG)} mg/g (${formatNumber(result.capacityMmolG, 3)} mmol/g)`],
   ]
   return (
     <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
@@ -180,6 +180,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   }, [shown, data])
 
   const overlay = shown.length > 1
+  const palette = chartPalette(useDarkMode())
   const traces: ChartTrace[] = useMemo(
     () =>
       shown
@@ -190,7 +191,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
           if (!overlay) {
             return {
               name: run.parameters.sample,
-              color: CHART_COLORS[0],
+              color: palette.series[0],
               hovertemplate: "%{y:,.0f} ppm<extra></extra>",
               ...withGaps(series.x, series.y, GAP_THRESHOLD_MS / 1000),
             }
@@ -201,12 +202,12 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
           const ratio = series.y.map((value) => (value - baseline) / inlet)
           return {
             name: run.parameters.sample,
-            color: CHART_COLORS[index % CHART_COLORS.length],
+            color: palette.series[index % palette.series.length],
             hovertemplate: "%{y:.3f}<extra>%{fullData.name}</extra>",
             ...withGaps(afterDelay, ratio, GAP_THRESHOLD_MS / 1000),
           }
         }),
-    [shown, data, results, overlay],
+    [shown, data, results, overlay, palette],
   )
 
   const lastTime = Math.max(

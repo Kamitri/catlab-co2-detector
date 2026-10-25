@@ -13,6 +13,27 @@ pub struct Settings {
     pub conversion_exponent: f64,
     pub extra_ports: Vec<String>,
     pub retention_days: u32,
+    /// Precision of balance (g); sets decimal places of sorbent mass.
+    pub mass_precision_g: f64,
+    /// Precision of soap film flowmeter (mL); sets decimal places of soap film volume.
+    pub soap_volume_precision_ml: f64,
+    /// "light", "dark" or "system".
+    pub theme: String,
+}
+
+impl Settings {
+    pub fn mass_decimals(&self) -> usize {
+        decimals(self.mass_precision_g)
+    }
+
+    pub fn soap_volume_decimals(&self) -> usize {
+        decimals(self.soap_volume_precision_ml)
+    }
+}
+
+/// Decimal places of precision step, e.g. 0.0001 -> 4, 0.1 -> 1, 1 -> 0.
+pub fn decimals(step: f64) -> usize {
+    if step > 0.0 && step.is_finite() { (-step.log10()).round().clamp(0.0, 8.0) as usize } else { 0 }
 }
 
 impl Default for Settings {
@@ -26,6 +47,9 @@ impl Default for Settings {
             conversion_exponent: VENDOR_EXPONENT,
             extra_ports: Vec::new(),
             retention_days: 30,
+            mass_precision_g: 0.0001,
+            soap_volume_precision_ml: 0.1,
+            theme: "light".into(),
         }
     }
 }
@@ -145,4 +169,17 @@ pub struct Measurements {
 pub enum Connection {
     Searching,
     Connected { port: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decimals_from_precision() {
+        assert_eq!(decimals(0.0001), 4);
+        assert_eq!(decimals(0.1), 1);
+        assert_eq!(decimals(1.0), 0);
+        assert_eq!(decimals(0.0), 0);
+    }
 }

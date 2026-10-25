@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import type { useRunForm } from "@/hooks/useRunForm"
 import type { Run } from "@/lib/api"
 import { formatDateTime, formatNumber } from "@/lib/format"
-import { DECIMALS, parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
+import { usePrecision } from "@/hooks/usePrecision"
+import { parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
 
 interface NumberField {
   key: NumericKey
@@ -53,6 +54,7 @@ export function SoapFilmFields({
   columns?: 1 | 2
 }) {
   const { values, set, errors } = form
+  const decimals = usePrecision()
   const volume = parseNumber(values.soapVolumeMl)
   const rates = soapFlowRates(values)
   const mean = rates.length > 0 ? rates.reduce((sum, rate) => sum + rate, 0) / rates.length : null
@@ -72,7 +74,7 @@ export function SoapFilmFields({
               value={values.soapVolumeMl}
               unit="mL"
               invalid={showValidation && errors.has("soapVolumeMl")}
-              decimals={DECIMALS.soapVolumeMl}
+              decimals={decimals.soapVolumeMl}
               onChange={(value) => set("soapVolumeMl", value)}
             />
           </div>
@@ -139,6 +141,7 @@ interface RunFieldsProps {
 
 export function RunFields({ form, blankRuns, showDelay, showValidation, columns = 2 }: RunFieldsProps) {
   const { values, set, errors } = form
+  const decimals = usePrecision()
   const invalid = (key: string) => showValidation && errors.has(key)
 
   const numberRows = (fields: NumberField[]) =>
@@ -151,7 +154,7 @@ export function RunFields({ form, blankRuns, showDelay, showValidation, columns 
             value={values[field.key]}
             unit={field.unit}
             invalid={invalid(field.key)}
-            decimals={DECIMALS[field.key]}
+            decimals={decimals[field.key]}
             onChange={(value) => set(field.key, value)}
           />
         </FormRow>
