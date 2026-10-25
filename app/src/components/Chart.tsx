@@ -47,13 +47,9 @@ interface PlotElement extends HTMLDivElement {
   }
 }
 
-/**
- * Clock axis value (ms) for x (s). Plotly shows date axes in UTC, so value is shifted by
- * time zone offset to show local clock time.
- */
+/** Clock axis value (ms since epoch) for x (s). Plotly shows ms values on date axis in local time. */
 function clockValue(clockStart: number, seconds: number): number {
-  const time = clockStart + seconds * 1000
-  return time - new Date(time).getTimezoneOffset() * 60_000
+  return clockStart + seconds * 1000
 }
 
 /** Space pans only when focus is outside text fields and when a dialog is not open. */
