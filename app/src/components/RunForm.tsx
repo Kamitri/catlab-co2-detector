@@ -25,7 +25,6 @@ const GAS_FIELDS: NumberField[] = [
 ]
 
 const CALCULATION_FIELDS: NumberField[] = [
-  { key: "baselineWindowS", label: "Baseline window", unit: "s" },
   {
     key: "coWindowS",
     label: (
@@ -65,7 +64,7 @@ export function SoapFilmFields({
     <FormGroup title="Flow rate">
       <FormGrid columns={columns}>
         <FormRow label="Volume" id="soapVolumeMl" invalid={showValidation && errors.has("soapVolumeMl")} wide>
-          <div className="w-28">
+          <div className="w-35">
             <NumberInput
               id="soapVolumeMl"
               value={values.soapVolumeMl}
@@ -82,7 +81,7 @@ export function SoapFilmFields({
           return (
             <FormRow key={key} label={`Time ${index + 1}`} id={key} invalid={invalid} wide>
               <div className="flex items-center gap-3">
-                <div className="w-28">
+                <div className="w-35">
                   <NumberInput id={key} value={text} unit="s" invalid={invalid} onChange={(value) => setTime(index, value)} />
                 </div>
                 <span className="whitespace-nowrap text-muted-foreground tabular-nums">
@@ -93,12 +92,12 @@ export function SoapFilmFields({
           )
         })}
         <FormRow wide>
-          <Button type="button" variant="outline" className="w-28" onClick={() => set("soapTimesS", [...values.soapTimesS, ""])}>
+          <Button type="button" variant="outline" className="w-35" onClick={() => set("soapTimesS", [...values.soapTimesS, ""])}>
             Add
           </Button>
         </FormRow>
         <FormRow label="Flow rate" wide>
-          <div className="flex h-7 w-28 items-center justify-end px-2 font-medium tabular-nums">
+          <div className="flex h-7 w-35 items-center justify-end px-2 font-medium tabular-nums">
             {mean !== null ? formatNumber(mean) : "–"}
             <span className="ml-1.5 text-xs font-normal text-muted-foreground">mL/min</span>
           </div>
@@ -136,6 +135,8 @@ export function RunFields({ form, blankRuns, showDelay, showValidation, columns 
         </FormRow>
       ))
 
+  const calculationRows = numberRows(CALCULATION_FIELDS)
+
   return (
     <div className="grid gap-3">
       <FormGroup title="Sample">
@@ -169,7 +170,9 @@ export function RunFields({ form, blankRuns, showDelay, showValidation, columns 
       <SoapFilmFields form={form} showValidation={showValidation} columns={columns} />
       <FormGroup title="Calculation">
         <FormGrid columns={columns}>
-          {numberRows(CALCULATION_FIELDS)}
+          {calculationRows}
+          {/* Empty cells complete row of two columns, so Blank run starts on new row */}
+          {columns === 2 && calculationRows.length % 2 === 1 && <div className="col-span-2" />}
           <FormRow label="Blank run" id="blankRun" wide>
             <Select
               value={values.blankRunId === null ? "none" : String(values.blankRunId)}

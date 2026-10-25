@@ -45,7 +45,6 @@ fn main() {
             pressure_bar: 1.0,
             temperature_c: 30.0,
             delay_s,
-            baseline_window_s: 60.0,
             co_window_s: 300.0,
             ..Default::default()
         },

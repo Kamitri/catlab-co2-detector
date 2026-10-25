@@ -29,7 +29,6 @@ function startDefaults(previous: Run | undefined, settings: Settings): RunParame
     pressureBar: 1,
     temperatureC: 30,
     delayS: 0,
-    baselineWindowS: settings.baselineWindowS,
     coWindowS: settings.coWindowS,
     blankRunId: null,
   }

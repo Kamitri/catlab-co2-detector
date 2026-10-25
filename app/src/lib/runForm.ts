@@ -6,14 +6,13 @@ export const NUMERIC_KEYS = [
   "pressureBar",
   "temperatureC",
   "delayS",
-  "baselineWindowS",
   "coWindowS",
   "soapVolumeMl",
 ] as const
 
 export type NumericKey = (typeof NUMERIC_KEYS)[number]
 
-const POSITIVE_KEYS: NumericKey[] = ["massG", "densityGMl", "pressureBar", "baselineWindowS", "coWindowS", "soapVolumeMl"]
+const POSITIVE_KEYS: NumericKey[] = ["massG", "densityGMl", "pressureBar", "coWindowS", "soapVolumeMl"]
 
 /** Number of soap film time fields shown when fewer times are stored. */
 export const SOAP_TIME_COUNT = 10

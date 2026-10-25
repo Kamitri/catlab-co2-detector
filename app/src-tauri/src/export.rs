@@ -333,7 +333,6 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         BlockRow::input("Pressure", parameters.pressure_bar, "bar", "Pressure"),
         BlockRow::input("Temperature", parameters.temperature_c, "°C", "Temperature"),
         BlockRow::input("Delay time", parameters.delay_s, "s", "DelayTime"),
-        BlockRow::input("Baseline window", parameters.baseline_window_s, "s", "BaselineWindow"),
         BlockRow::input("C{0} window", parameters.co_window_s, "s", "CoWindow"),
         BlockRow::input("Blank time", result.blank_time_s, "s", "BlankTime"),
         BlockRow::input("Conversion scale", run.conversion_scale, "ppmv", "ConversionScale"),
@@ -350,13 +349,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         ),
         BlockRow::formula("Samples", "=COUNT(A:A)".into(), result.sample_count as f64, "", None),
         BlockRow::formula("End time", "=MAX(A:A)".into(), result.end_time_s, "s", Some("EndTime")),
-        BlockRow::formula(
-            "Baseline",
-            "=AVERAGEIFS(D:D,A:A,\"<=\"&BaselineWindow)".into(),
-            result.baseline_ppm,
-            "ppmv",
-            Some("Baseline"),
-        ),
+        BlockRow::formula("Baseline", "=MIN(D:D)".into(), result.baseline_ppm, "ppmv", Some("Baseline")),
         BlockRow::formula(
             "C{0}",
             "=AVERAGEIFS(D:D,A:A,\">=\"&(EndTime-CoWindow))-Baseline".into(),
@@ -644,7 +637,6 @@ mod tests {
                 density_g_ml: 1.0,
                 pressure_bar: 1.0,
                 temperature_c: 30.0,
-                baseline_window_s: 10.0,
                 co_window_s: 10.0,
                 ..Default::default()
             },

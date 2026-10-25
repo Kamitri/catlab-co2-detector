@@ -36,7 +36,7 @@ export function FormGrid({
         className={cn(
           "grid items-center gap-x-3 gap-y-1.5",
           columns === 2
-            ? "grid-cols-[112px_minmax(0,1fr)_84px_minmax(0,1fr)]"
+            ? "grid-cols-[128px_minmax(0,1fr)_84px_minmax(0,1fr)]"
             : compact
               ? "grid-cols-[48px_minmax(0,1fr)]"
               : "grid-cols-[128px_minmax(0,1fr)]",

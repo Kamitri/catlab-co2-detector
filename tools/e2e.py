@@ -166,6 +166,8 @@ def main(
         CO2_EXTRA_PORTS=str(work / "app"),
         CO2_POLL_INTERVAL_MS=str(poll_interval),
         XDG_DATA_HOME=str(work / "data"),
+        # Time zone other than UTC, so clock axis checks catch time zone errors
+        TZ="Asia/Ho_Chi_Minh",
     )
     processes = [start(["Xvfb", ":99", "-screen", "0", "1440x900x24"])]
     wait_until(lambda: Path("/tmp/.X11-unix/X99").exists(), 10, "Virtual display not started")
@@ -189,7 +191,6 @@ def main(
 
         button(driver, "Settings").click()
         fill(driver, "folder", str(work / "exports"))
-        fill(driver, "equilibriumDurationS", "2")
         fill(driver, "equilibriumBandPercent", "5")
         shot(driver, "02-settings")
         button(driver, "Save").click()
@@ -202,7 +203,6 @@ def main(
         fill(driver, "operator", "Test")
         fill(driver, "massG", "0.56")
         # Windows scaled to fast poll interval: data of 1 s real time covers about 400 s of run
-        fill(driver, "baselineWindowS", "0.5")
         fill(driver, "coWindowS", "1")
         shot(driver, "03-sample")
         dialog_button(driver, "Save").click()
@@ -337,8 +337,10 @@ def main(
         remaining = query_count(work, f"SELECT COUNT(*) FROM measurements WHERE timestamp < {cleared - 1000} AND NOT {IN_RUN}")
         assert remaining == 0, remaining
         assert query_count(work, f"SELECT COUNT(*) FROM measurements WHERE {IN_RUN}") == run_measurements
-        # Chart starts again at time 0 = time of Clear chart
+        # Chart starts again at time 0 = time of Clear chart; clock axis shows that time
         wait_until(lambda: driver.execute_script(clock_start) > before, 5, "Chart not cleared")
+        cleared_at = query_count(work, "SELECT MAX(timestamp) FROM messages WHERE text = 'Chart cleared'")
+        assert abs(driver.execute_script(clock_start) - cleared_at) < 5000, (driver.execute_script(clock_start), cleared_at)
         shot(driver, "13-cleared")
         print("Clear chart: confirmation, measurements outside runs deleted, run measurements kept")
         driver.quit()

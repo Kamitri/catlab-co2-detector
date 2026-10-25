@@ -163,8 +163,7 @@ export function useMonitor() {
     const series = runSeries(run, measurements.current)
     const reached = detectEquilibrium(series, {
       bandPercent: settings.equilibriumBandPercent,
-      durationS: settings.equilibriumDurationS,
-      baselineWindowS: run.parameters.baselineWindowS,
+      windowS: run.parameters.coWindowS,
       delayS: run.parameters.delayS,
     })
     if (reached !== null) {
