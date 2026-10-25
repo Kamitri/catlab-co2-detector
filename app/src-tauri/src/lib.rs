@@ -101,7 +101,7 @@ fn set_keep_awake(state: &AppState, active: bool) {
             .idle(true)
             .sleep(true)
             .reason("Run in progress")
-            .app_name("CO2 Monitor")
+            .app_name("CATlab CO2 Monitor")
             .app_reverse_domain("com.catlab.co2monitor")
             .create()
             .ok();
@@ -115,7 +115,7 @@ fn default_export_folder(app: &AppHandle) -> PathBuf {
         .document_dir()
         .or_else(|_| app.path().home_dir())
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join("CO2 Monitor")
+        .join("CATlab CO2 Monitor")
 }
 
 fn has_active_run(app: &AppHandle) -> bool {
@@ -149,6 +149,7 @@ struct Snapshot {
     active_run: Option<Run>,
     messages: Vec<Message>,
     settings: Settings,
+    sample: Option<RunParameters>,
 }
 
 #[tauri::command]
@@ -159,6 +160,7 @@ fn get_snapshot(state: State<AppState>) -> CommandResult<Snapshot> {
         active_run: database.active_run().map_err(error_text)?,
         messages: database.recent_messages(300).map_err(error_text)?,
         settings: database.settings().map_err(error_text)?,
+        sample: database.sample().map_err(error_text)?,
     })
 }
 
@@ -176,15 +178,24 @@ fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> 
 }
 
 #[tauri::command]
-fn start_run(app: AppHandle, state: State<AppState>, parameters: RunParameters) -> CommandResult<Run> {
+fn save_sample(state: State<AppState>, parameters: RunParameters) -> CommandResult<RunParameters> {
+    lock(&state.database).save_sample(&parameters).map_err(error_text)?;
+    Ok(parameters)
+}
+
+/// Starts run at once with sample configured before Start.
+#[tauri::command]
+fn start_run(app: AppHandle, state: State<AppState>) -> CommandResult<Run> {
+    let started_at = now_ms();
     let run = {
         let database = lock(&state.database);
         if database.active_run().map_err(error_text)?.is_some() {
             return Err("Run already in progress".into());
         }
+        let parameters = database.sample().map_err(error_text)?.ok_or("Sample not configured")?;
         let settings = database.settings().map_err(error_text)?;
         let id = database
-            .insert_run(now_ms(), settings.conversion_scale, settings.conversion_exponent, &parameters)
+            .insert_run(started_at, settings.conversion_scale, settings.conversion_exponent, &parameters)
             .map_err(error_text)?;
         log(&app, &database, "info", &format!("Run started: {}", parameters.sample));
         database.run(id).map_err(error_text)?.ok_or("Run not found")?
@@ -278,7 +289,8 @@ struct ExportJob {
     blank_label: Option<String>,
 }
 
-fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResult<ExportJob> {
+/// Export folder of Settings, or default folder when not set; folder is created when missing.
+fn export_folder_path(app: &AppHandle, database: &Database) -> CommandResult<PathBuf> {
     let settings = database.settings().map_err(error_text)?;
     let folder = if settings.export_folder.is_empty() {
         default_export_folder(app)
@@ -286,6 +298,17 @@ fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResu
         PathBuf::from(&settings.export_folder)
     };
     std::fs::create_dir_all(&folder).map_err(error_text)?;
+    Ok(folder)
+}
+
+#[tauri::command]
+fn export_folder(app: AppHandle, state: State<AppState>) -> CommandResult<String> {
+    Ok(export_folder_path(&app, &lock(&state.database))?.display().to_string())
+}
+
+fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResult<ExportJob> {
+    let settings = database.settings().map_err(error_text)?;
+    let folder = export_folder_path(app, database)?;
     let path = export::unique_path(&folder, &export::file_name(&settings.file_name_pattern, &run));
     let (result, blank_label, measurements) = run_result(database, &run)?;
     Ok(ExportJob { path, run, measurements, result, blank_label })
@@ -300,7 +323,7 @@ fn write_export(app: &AppHandle, state: &AppState, job: ExportJob) -> CommandRes
         blank_label: job.blank_label.clone(),
         cached_results: true,
     };
-    export::write_workbook(&job.path, &input).map_err(error_text)?;
+    export::write_workbook(&job.path, &[input]).map_err(error_text)?;
     let path_text = job.path.display().to_string();
     let database = lock(&state.database);
     database.set_export_path(job.run.id, &path_text).map_err(error_text)?;
@@ -321,6 +344,38 @@ fn export_run(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<
         prepare_export(&app, &database, run)
     };
     job.and_then(|job| write_export(&app, &state, job)).inspect_err(|error| log_export_error(&app, &state, error))
+}
+
+/// Exports runs to one workbook at path chosen by user, one sheet per run.
+#[tauri::command]
+fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: String) -> CommandResult<String> {
+    let jobs = {
+        let database = lock(&state.database);
+        let mut jobs = Vec::new();
+        for id in ids {
+            let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
+            let (result, blank_label, measurements) = run_result(&database, &run)?;
+            jobs.push(ExportJob { path: PathBuf::from(&path), run, measurements, result, blank_label });
+        }
+        jobs
+    };
+    let inputs: Vec<export::ExportInput> = jobs
+        .iter()
+        .map(|job| export::ExportInput {
+            run: &job.run,
+            measurements: &job.measurements,
+            result: &job.result,
+            blank_label: job.blank_label.clone(),
+            cached_results: true,
+        })
+        .collect();
+    let path = PathBuf::from(&path);
+    export::write_workbook(&path, &inputs)
+        .map_err(error_text)
+        .inspect_err(|error| log_export_error(&app, &state, error))?;
+    let file_name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+    log(&app, &lock(&state.database), "info", &format!("Exported {file_name}"));
+    Ok(path.display().to_string())
 }
 
 fn end_run(
@@ -423,7 +478,7 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
     let exit = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &exit])?;
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("CO₂ Monitor")
+        .tooltip("CATlab CO₂ Monitor")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -500,12 +555,15 @@ pub fn run() {
             get_snapshot,
             get_measurements,
             save_settings,
+            save_sample,
             start_run,
             update_run,
             add_marker,
             get_markers,
             get_run_result,
             export_run,
+            export_runs,
+            export_folder,
             finish_run,
             abort_run,
             clear_chart,

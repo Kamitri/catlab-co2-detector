@@ -1,4 +1,4 @@
-# CO₂ Monitor
+# CATlab CO₂ Monitor
 
 Desktop application for the CO₂ NDIR detector. It replaces `CO2 NDIR Monitor.exe`.
 The serial protocol and the conversion formula are documented in [`docs/protocol.md`](../docs/protocol.md).
@@ -15,10 +15,13 @@ The serial protocol and the conversion formula are documented in [`docs/protocol
 
 - The application scans all serial ports every 2 s and connects to the first port that replies to the poll request with a valid frame. After a disconnection it scans again.
 - Every measurement is written to SQLite as it arrives (`co2-monitor.db` in the application data folder). Measurements outside a run are kept for the retention period in Settings (30 days by default).
+- The sample (name, sorbent, gas, flow rate, calculation settings) is configured with Sample before Start. Start then starts the run at once. During a run, Sample edits the run.
 - A run is a time interval over the stored measurements. A run that was in progress when the application closed is reopened on the next start.
 - Clear chart (outside a run) deletes the measurements on the live chart from the database, except measurements of runs. The chart then starts again at 0 s.
 - Charts show time in seconds on the bottom axis and clock time on the top axis. The chart of several runs in History shows seconds only.
 - Finish and Abort export the run to an xlsx file in the export folder. An existing file is never overwritten.
+- Export in History writes all checked runs to one workbook, one sheet per run. The sheet name is the start date and the sample, for example `2026-10-25_Na-ZY`.
+- Each sheet follows the layout and colors of `CO2 capture calculation standard.xlsx`: data in columns A to H, parameters in columns J to N, soap film times in columns P to R, and the chart from column T.
 - The workbook has live formulas. `src-tauri/src/calculation.rs` uses the same method, and `src-tauri/examples/export_check.rs` checks that both produce the same results.
 
 ## Calculation
@@ -29,6 +32,7 @@ The method follows `CO2 capture calculation standard.xlsx`, with these changes:
 - Co is the mean over the last Co window (default 300 s) minus the baseline, instead of the maximum.
 - Time steps come from timestamps, keeping the time axis correct when data is missing.
 - Optional blank run: its stoichiometric time is subtracted (correction for dead volume).
+- Flow rate is the mean of the soap film flow rates, each 60 × volume / time (mL/min). The number of times is free (10 by default).
 - Gas law uses R = 0.08206 L·atm/(mol·K) and T + 273.15.
 - Flow rate is the mean of the 5 measurements entered at Finish, or the nominal flow rate without measurements.
 

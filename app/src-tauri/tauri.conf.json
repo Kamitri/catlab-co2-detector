@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "CO₂ Monitor",
+        "title": "CATlab CO₂ Monitor",
         "width": 1400,
         "height": 860,
         "minWidth": 1000,

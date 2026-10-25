@@ -68,10 +68,24 @@ pub fn mean(values: impl Iterator<Item = f64>) -> f64 {
     if count == 0 { f64::NAN } else { sum / count as f64 }
 }
 
-/// Flow rate used in calculation: mean of measurements, or nominal value without measurements.
+/// Flow rate (mL/min) of one soap film time.
+pub fn soap_flow_rate(volume_ml: f64, time_s: f64) -> f64 {
+    60.0 * volume_ml / time_s
+}
+
+/// Flow rate used in calculation (mL/min): mean of soap film flow rates; runs of earlier versions use
+/// mean of flow measurements or nominal flow rate. Without any of these, flow rate is unknown (NaN).
 pub fn effective_flow_rate(run: &Run) -> f64 {
-    let measurements = &run.parameters.flow_measurements;
-    if measurements.is_empty() { run.parameters.flow_rate_ml_min } else { mean(measurements.iter().copied()) }
+    let parameters = &run.parameters;
+    if !parameters.soap_times_s.is_empty() {
+        mean(parameters.soap_times_s.iter().map(|time| soap_flow_rate(parameters.soap_volume_ml, *time)))
+    } else if !parameters.flow_measurements.is_empty() {
+        mean(parameters.flow_measurements.iter().copied())
+    } else if parameters.flow_rate_ml_min > 0.0 {
+        parameters.flow_rate_ml_min
+    } else {
+        f64::NAN
+    }
 }
 
 /// Mean baseline (ppmv) over first window.
@@ -248,5 +262,16 @@ mod tests {
         let mut measured = parameters();
         measured.flow_measurements = vec![58.0, 59.0, 60.0, 61.0, 62.0];
         assert_eq!(effective_flow_rate(&run(measured)), 60.0);
+    }
+
+    #[test]
+    fn soap_film_times_set_flow_rate() {
+        let mut timed = parameters();
+        timed.flow_measurements = vec![50.0];
+        // 5 mL in 2.5 s and 10 s: 120 and 30 mL/min
+        timed.soap_times_s = vec![2.5, 10.0];
+        assert_eq!(effective_flow_rate(&run(timed)), 75.0);
+        let unknown = RunParameters { flow_rate_ml_min: 0.0, ..parameters() };
+        assert!(effective_flow_rate(&run(unknown)).is_nan());
     }
 }

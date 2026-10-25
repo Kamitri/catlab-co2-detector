@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 import { AboutView } from "@/components/AboutView"
 import { HistoryView } from "@/components/HistoryView"
 import { LiveView } from "@/components/LiveView"
-import { ConfirmDialog, FinishDialog, MarkerDialog, RecoveryDialog, StartDialog } from "@/components/RunDialogs"
+import { ConfirmDialog, FinishDialog, MarkerDialog, RecoveryDialog, SampleDialog } from "@/components/RunDialogs"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { StatusPanel } from "@/components/StatusPanel"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import icon from "@/assets/icon.png"
 import { useMonitor } from "@/hooks/useMonitor"
 import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
 
-type DialogState = "start" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | null
+type DialogState = "sample" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | null
 type View = "live" | "history" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
@@ -20,8 +20,10 @@ function startDefaults(previous: Run | undefined, settings: Settings): RunParame
     sample: "",
     operator: "",
     note: "",
-    flowRateMlMin: 60,
+    flowRateMlMin: 0,
     flowMeasurements: [],
+    soapVolumeMl: 5,
+    soapTimesS: [],
     massG: 1,
     densityGMl: 1,
     pressureBar: 1,
@@ -32,12 +34,12 @@ function startDefaults(previous: Run | undefined, settings: Settings): RunParame
     blankRunId: null,
   }
   if (!previous) return base
-  const { operator, flowRateMlMin, massG, densityGMl, pressureBar, temperatureC, blankRunId } = previous.parameters
-  return { ...base, operator, flowRateMlMin, massG, densityGMl, pressureBar, temperatureC, blankRunId }
+  const { operator, soapVolumeMl, massG, densityGMl, pressureBar, temperatureC, blankRunId } = previous.parameters
+  return { ...base, operator, soapVolumeMl, massG, densityGMl, pressureBar, temperatureC, blankRunId }
 }
 
 export default function App() {
-  const { state, setSettings, dismissRecovery, applyRun, clearChart } = useMonitor()
+  const { state, setSettings, setSample, dismissRecovery, applyRun, clearChart } = useMonitor()
   const [view, setView] = useState<View>("live")
   const [dialog, setDialog] = useState<DialogState>(null)
   const [runs, setRuns] = useState<Run[]>([])
@@ -54,9 +56,15 @@ export default function App() {
     return () => void unlisten.then((dispose) => dispose())
   }, [])
 
-  async function openStart() {
+  async function openSample() {
     setRuns(await api.listRuns())
-    setDialog("start")
+    setDialog("sample")
+  }
+
+  // Start is one click: run starts at once with sample configured before
+  async function start() {
+    const run = await handle(() => api.startRun())
+    if (run) await applyRun(run)
   }
 
   async function handle<T>(action: () => Promise<T>): Promise<T | undefined> {
@@ -77,7 +85,7 @@ export default function App() {
         <div className="flex items-center gap-2">
           <img src={icon} alt="" className="size-6" draggable={false} />
           <h1 className="text-sm font-semibold">
-            CO<sub>2</sub> Monitor
+            CATlab CO<sub>2</sub> Monitor
           </h1>
         </div>
         <Tabs value={view} onValueChange={(value) => setView(value as View)}>
@@ -98,7 +106,8 @@ export default function App() {
           {view === "live" ? (
             <LiveView
               state={state}
-              onStart={() => void openStart()}
+              onSample={() => void openSample()}
+              onStart={() => void start()}
               onValveOpen={() => activeRun && void handle(() => api.addMarker(activeRun.id, "Valve open", true))}
               onMarker={() => setDialog("marker")}
               onFinish={() => setDialog("finish")}
@@ -114,18 +123,21 @@ export default function App() {
         <StatusPanel state={state} now={now} />
       </div>
 
-      {dialog === "start" && settings && (
-        <StartDialog
-          defaults={startDefaults(runs[0], settings)}
-          blankRuns={finishedRuns}
+      {dialog === "sample" && settings && (
+        <SampleDialog
+          defaults={activeRun?.parameters ?? state.sample ?? startDefaults(runs[0], settings)}
+          blankRuns={finishedRuns.filter((run) => run.id !== activeRun?.id)}
+          showDelay={activeRun !== null}
           onCancel={() => setDialog(null)}
-          onStart={async (parameters) => {
-            const run = await handle(() => api.startRun(parameters))
-            if (run) {
-              await applyRun(run)
-              setView("live")
-              setDialog(null)
+          onSave={async (parameters) => {
+            if (activeRun) {
+              const run = await handle(() => api.updateRun(activeRun.id, parameters))
+              if (run) await applyRun(run)
+            } else {
+              const saved = await handle(() => api.saveSample(parameters))
+              if (saved) setSample(saved)
             }
+            setDialog(null)
           }}
         />
       )}

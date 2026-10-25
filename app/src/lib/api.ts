@@ -22,6 +22,8 @@ export interface RunParameters {
   note: string
   flowRateMlMin: number
   flowMeasurements: number[]
+  soapVolumeMl: number
+  soapTimesS: number[]
   massG: number
   densityGMl: number
   pressureBar: number
@@ -93,6 +95,7 @@ export interface Snapshot {
   activeRun: Run | null
   messages: Message[]
   settings: Settings
+  sample: RunParameters | null
 }
 
 export interface MeasurementEvent {
@@ -104,12 +107,17 @@ export const api = {
   getSnapshot: () => invoke<Snapshot>("get_snapshot"),
   getMeasurements: (from: number, to: number) => invoke<Measurements>("get_measurements", { from, to }),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
-  startRun: (parameters: RunParameters) => invoke<Run>("start_run", { parameters }),
+  saveSample: (parameters: RunParameters) => invoke<RunParameters>("save_sample", { parameters }),
+  /** Starts run at once with saved sample. */
+  startRun: () => invoke<Run>("start_run"),
   updateRun: (id: number, parameters: RunParameters) => invoke<Run>("update_run", { id, parameters }),
   addMarker: (id: number, label: string, valveOpen: boolean) => invoke<Marker>("add_marker", { id, label, valveOpen }),
   getMarkers: (id: number) => invoke<Marker[]>("get_markers", { id }),
   getRunResult: (id: number) => invoke<RunResult>("get_run_result", { id }),
   exportRun: (id: number) => invoke<string>("export_run", { id }),
+  /** Exports runs to one workbook, one sheet per run. */
+  exportRuns: (ids: number[], path: string) => invoke<string>("export_runs", { ids, path }),
+  exportFolder: () => invoke<string>("export_folder"),
   finishRun: (id: number, parameters: RunParameters) => invoke<Run>("finish_run", { id, parameters }),
   abortRun: (id: number) => invoke<Run>("abort_run", { id }),
   /** Deletes chart measurements from `from` to now outside runs; returns end time. */

@@ -60,15 +60,21 @@ impl RunStatus {
     }
 }
 
-/// Parameters entered by user; editable during and after run.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Parameters entered by user; editable before, during and after run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RunParameters {
     pub sample: String,
     pub operator: String,
     pub note: String,
+    /// Flow rate of runs without soap film times; 0 in new runs.
     pub flow_rate_ml_min: f64,
+    /// Flow rates of earlier application versions (mL/min); empty in new runs.
     pub flow_measurements: Vec<f64>,
+    /// Volume between marks of soap film flowmeter (mL).
+    pub soap_volume_ml: f64,
+    /// Soap film times over soap volume (s).
+    pub soap_times_s: Vec<f64>,
     pub mass_g: f64,
     pub density_g_ml: f64,
     pub pressure_bar: f64,
@@ -77,6 +83,28 @@ pub struct RunParameters {
     pub baseline_window_s: f64,
     pub co_window_s: f64,
     pub blank_run_id: Option<i64>,
+}
+
+impl Default for RunParameters {
+    fn default() -> Self {
+        Self {
+            sample: String::new(),
+            operator: String::new(),
+            note: String::new(),
+            flow_rate_ml_min: 0.0,
+            flow_measurements: Vec::new(),
+            soap_volume_ml: 5.0,
+            soap_times_s: Vec::new(),
+            mass_g: 0.0,
+            density_g_ml: 0.0,
+            pressure_bar: 0.0,
+            temperature_c: 0.0,
+            delay_s: 0.0,
+            baseline_window_s: 0.0,
+            co_window_s: 0.0,
+            blank_run_id: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

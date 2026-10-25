@@ -1,11 +1,12 @@
 import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayout"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { useRunForm } from "@/hooks/useRunForm"
 import type { Run } from "@/lib/api"
-import { formatDateTime } from "@/lib/format"
-import type { NumericKey } from "@/lib/runForm"
+import { formatDateTime, formatNumber } from "@/lib/format"
+import { parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
 
 interface NumberField {
   key: NumericKey
@@ -19,7 +20,6 @@ const SORBENT_FIELDS: NumberField[] = [
 ]
 
 const GAS_FIELDS: NumberField[] = [
-  { key: "flowRateMlMin", label: "Flow rate", unit: "mL/min" },
   { key: "pressureBar", label: "Pressure", unit: "bar" },
   { key: "temperatureC", label: "Temperature", unit: "°C" },
 ]
@@ -38,8 +38,78 @@ const CALCULATION_FIELDS: NumberField[] = [
   { key: "delayS", label: "Delay time", unit: "s" },
 ]
 
+type RunForm = ReturnType<typeof useRunForm>
+
+/** Soap film flowmeter: time over volume for each measurement; flow rate is calculated from times. */
+export function SoapFilmFields({
+  form,
+  showValidation,
+  columns = 1,
+}: {
+  form: RunForm
+  showValidation: boolean
+  /** Columns of surrounding form; rows span full width to keep label column aligned. */
+  columns?: 1 | 2
+}) {
+  const { values, set, errors } = form
+  const volume = parseNumber(values.soapVolumeMl)
+  const rates = soapFlowRates(values)
+  const mean = rates.length > 0 ? rates.reduce((sum, rate) => sum + rate, 0) / rates.length : null
+  const setTime = (index: number, text: string) =>
+    set(
+      "soapTimesS",
+      values.soapTimesS.map((item, position) => (position === index ? text : item)),
+    )
+
+  return (
+    <FormGroup title="Flow rate">
+      <FormGrid columns={columns}>
+        <FormRow label="Volume" id="soapVolumeMl" invalid={showValidation && errors.has("soapVolumeMl")} wide>
+          <div className="w-28">
+            <NumberInput
+              id="soapVolumeMl"
+              value={values.soapVolumeMl}
+              unit="mL"
+              invalid={showValidation && errors.has("soapVolumeMl")}
+              onChange={(value) => set("soapVolumeMl", value)}
+            />
+          </div>
+        </FormRow>
+        {values.soapTimesS.map((text, index) => {
+          const key = soapTimeKey(index)
+          const invalid = errors.has(key)
+          const time = parseNumber(text)
+          return (
+            <FormRow key={key} label={`Time ${index + 1}`} id={key} invalid={invalid} wide>
+              <div className="flex items-center gap-3">
+                <div className="w-28">
+                  <NumberInput id={key} value={text} unit="s" invalid={invalid} onChange={(value) => setTime(index, value)} />
+                </div>
+                <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                  {time > 0 && volume > 0 ? `${formatNumber(soapFlowRate(volume, time))} mL/min` : ""}
+                </span>
+              </div>
+            </FormRow>
+          )
+        })}
+        <FormRow wide>
+          <Button type="button" variant="outline" className="w-28" onClick={() => set("soapTimesS", [...values.soapTimesS, ""])}>
+            Add
+          </Button>
+        </FormRow>
+        <FormRow label="Flow rate" wide>
+          <div className="flex h-7 w-28 items-center justify-end px-2 font-medium tabular-nums">
+            {mean !== null ? formatNumber(mean) : "–"}
+            <span className="ml-1.5 text-xs font-normal text-muted-foreground">mL/min</span>
+          </div>
+        </FormRow>
+      </FormGrid>
+    </FormGroup>
+  )
+}
+
 interface RunFieldsProps {
-  form: ReturnType<typeof useRunForm>
+  form: RunForm
   blankRuns: Run[]
   showDelay: boolean
   showValidation: boolean
@@ -96,6 +166,7 @@ export function RunFields({ form, blankRuns, showDelay, showValidation, columns 
       <FormGroup title="Gas">
         <FormGrid columns={columns}>{numberRows(GAS_FIELDS)}</FormGrid>
       </FormGroup>
+      <SoapFilmFields form={form} showValidation={showValidation} columns={columns} />
       <FormGroup title="Calculation">
         <FormGrid columns={columns}>
           {numberRows(CALCULATION_FIELDS)}

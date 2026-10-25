@@ -9,6 +9,7 @@ import {
   type MeasurementEvent,
   type Measurements,
   type Run,
+  type RunParameters,
   type RunResult,
   type Settings,
 } from "@/lib/api"
@@ -25,6 +26,8 @@ export interface MonitorState {
   ready: boolean
   connection: Connection
   settings: Settings | null
+  /** Sample of next run; Start uses it. */
+  sample: RunParameters | null
   activeRun: Run | null
   recoveredRun: Run | null
   messages: Message[]
@@ -42,6 +45,7 @@ export interface MonitorState {
 export function useMonitor() {
   const [connection, setConnection] = useState<Connection>({ state: "searching" })
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [sample, setSample] = useState<RunParameters | null>(null)
   const [activeRun, setActiveRun] = useState<Run | null>(null)
   const [recoveredRun, setRecoveredRun] = useState<Run | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -116,6 +120,7 @@ export function useMonitor() {
       if (disposed) return
       setConnection(snapshot.connection)
       setSettings(snapshot.settings)
+      setSample(snapshot.sample)
       setMessages(snapshot.messages)
       activeRunRef.current = snapshot.activeRun
       setActiveRun(snapshot.activeRun)
@@ -173,6 +178,7 @@ export function useMonitor() {
     ready,
     connection,
     settings,
+    sample,
     activeRun,
     recoveredRun,
     messages,
@@ -201,6 +207,7 @@ export function useMonitor() {
   return {
     state,
     setSettings,
+    setSample,
     clearChart,
     dismissRecovery: () => setRecoveredRun(null),
     applyRun,
