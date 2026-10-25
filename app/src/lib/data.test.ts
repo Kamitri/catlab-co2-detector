@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
+import type { RunParameters } from "@/lib/api"
+import { toFormValues } from "@/lib/runForm"
 import { stepValue } from "@/lib/step"
 import { timeAxisEnd } from "@/lib/view"
 
@@ -64,5 +66,14 @@ describe("timeAxisEnd", () => {
     expect(timeAxisEnd(4999)).toBe(6000)
     expect(timeAxisEnd(5000)).toBe(7000)
     expect(timeAxisEnd(Number.NaN)).toBe(5000)
+  })
+})
+
+describe("toFormValues", () => {
+  it("shows decimal places of balance and soap film flowmeter", () => {
+    const values = toFormValues({ massG: 0.499, soapVolumeMl: 5, soapTimesS: [2.67] } as RunParameters)
+    expect(values.massG).toBe("0.4990")
+    expect(values.soapVolumeMl).toBe("5.0")
+    expect(values.soapTimesS[0]).toBe("2.67")
   })
 })

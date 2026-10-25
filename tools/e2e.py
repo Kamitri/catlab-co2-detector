@@ -113,6 +113,8 @@ def check_export(work: Path) -> None:
     flow = next(sheet.cell(row, 12).value for row in range(1, 60) if sheet.cell(row, 11).value == "Flow rate")
     expected = sum(300 / float(time) for time in SOAP_TIMES) / len(SOAP_TIMES)
     assert abs(flow - expected) < 1e-9, (flow, expected)
+    formats = {sheet.cell(row, 11).value: sheet.cell(row, 12).number_format for row in range(1, 60)}
+    assert formats["Mass of sorbent"] == "0.0000" and formats["Soap film volume"] == "0.0", formats
     print(f"Export: sheet {sheet.title}, flow rate {flow:.2f} mL/min from {len(times)} soap film times")
 
 
@@ -204,6 +206,9 @@ def main(
         fill(driver, "massG", "0.56")
         # Windows scaled to fast poll interval: data of 1 s real time covers about 400 s of run
         fill(driver, "coWindowS", "1")
+        # Mass and soap film volume show decimal places of balance and flowmeter after field loses focus
+        assert driver.find_element(By.ID, "massG").get_attribute("value") == "0.5600"
+        assert driver.find_element(By.ID, "soapVolumeMl").get_attribute("value") == "5.0"
         shot(driver, "03-sample")
         dialog_button(driver, "Save").click()
         wait_until(lambda: button(driver, "Start").is_enabled(), 5, "Start not enabled after sample saved")

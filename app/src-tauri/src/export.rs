@@ -423,7 +423,13 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     for (index, row_data) in inputs.iter().enumerate() {
         let row = input_start + index as u32;
         write_label(sheet, row, BLOCK_LABEL, row_data.label, &styles.input_label)?;
-        sheet.write_number_with_format(row, BLOCK_VALUE, row_data.value, &styles.input)?;
+        // Decimal places of balance (0.0001 g) and soap film flowmeter (0.1 mL)
+        let value_format = match row_data.name {
+            Some("SampleMass") => styles.input.clone().set_num_format("0.0000"),
+            Some("SoapVolume") => styles.input.clone().set_num_format("0.0"),
+            _ => styles.input.clone(),
+        };
+        sheet.write_number_with_format(row, BLOCK_VALUE, row_data.value, &value_format)?;
         sheet.write_string_with_format(row, BLOCK_UNIT, row_data.unit, &styles.input)?;
         if let Some(local) = row_data.name {
             define(local, row, BLOCK_VALUE);

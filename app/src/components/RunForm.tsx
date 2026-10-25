@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { useRunForm } from "@/hooks/useRunForm"
 import type { Run } from "@/lib/api"
 import { formatDateTime, formatNumber } from "@/lib/format"
-import { parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
+import { DECIMALS, parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
 
 interface NumberField {
   key: NumericKey
@@ -72,6 +72,7 @@ export function SoapFilmFields({
               value={values.soapVolumeMl}
               unit="mL"
               invalid={showValidation && errors.has("soapVolumeMl")}
+              decimals={DECIMALS.soapVolumeMl}
               onChange={(value) => set("soapVolumeMl", value)}
             />
           </div>
@@ -148,6 +149,7 @@ export function RunFields({ form, blankRuns, showDelay, showValidation, columns 
             value={values[field.key]}
             unit={field.unit}
             invalid={invalid(field.key)}
+            decimals={DECIMALS[field.key]}
             onChange={(value) => set(field.key, value)}
           />
         </FormRow>
