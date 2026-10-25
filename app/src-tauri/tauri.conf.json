@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "CO2 Monitor",
+  "productName": "CATlab CO2 Monitor",
+  "mainBinaryName": "CATlab CO2 Monitor",
   "version": "0.1.0",
   "identifier": "com.catlab.co2monitor",
   "build": {

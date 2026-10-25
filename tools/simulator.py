@@ -1,6 +1,7 @@
 """Detector simulator for development: replies to poll requests on serial port with values from legacy result file."""
 
 import math
+import time
 from typing import Annotated
 
 import serial
@@ -43,6 +44,7 @@ def main(
     step: Annotated[int, typer.Option(help="Samples to advance per request")] = 1,
     corrupt_every: Annotated[int, typer.Option(help="Send bad checksum every N replies (0 disables)")] = 0,
     offset: Annotated[int, typer.Option(help="Index of first sample to replay")] = 0,
+    delay: Annotated[float, typer.Option(help="Reply delay (s)")] = 0.0,
 ) -> None:
     """Reply to poll requests like CO₂ NDIR detector."""
     counts = load_counts(data) if data else [35] * 60 + [260] * 600
@@ -62,6 +64,7 @@ def main(
         replies += 1
         if corrupt_every and replies % corrupt_every == 0:
             frame[6] ^= 0xFF
+        time.sleep(delay)
         connection.write(frame)
         index += step
 

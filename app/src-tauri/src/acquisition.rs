@@ -16,7 +16,11 @@ use crate::protocol::{FrameError, REQUEST, find_reply};
 pub const BAUD_RATE: u32 = 19200;
 pub const POLL_INTERVAL: Duration = Duration::from_secs(1);
 const SCAN_INTERVAL: Duration = Duration::from_secs(2);
-const REPLY_TIMEOUT: Duration = Duration::from_millis(500);
+const REPLY_TIMEOUT: Duration = Duration::from_millis(900);
+/// Polls per port during scan. Some USB serial adapters lose first frame after port opens.
+const PROBE_ATTEMPTS: u32 = 3;
+/// Wait after opening port before first poll, for adapter to apply line settings.
+const OPEN_SETTLE: Duration = Duration::from_millis(200);
 /// Searching time before "Detector not found" message.
 const NOT_FOUND_DELAY: Duration = Duration::from_secs(10);
 /// Consecutive missing replies before port is treated as disconnected.
@@ -95,15 +99,44 @@ fn candidate_ports(extra: Vec<String>, preferred: Option<&str>) -> Vec<String> {
     ports
 }
 
+/// Port found by scan, with first count N.
+type Found = (String, Box<dyn SerialPort>, u32);
+
+/// Describes why port could not be opened.
+fn open_failure(error: &serialport::Error) -> &'static str {
+    let description = error.description.to_lowercase();
+    // Windows reports port opened by another program as "Access is denied", Linux as "busy"
+    if description.contains("denied") || description.contains("busy") { "in use" } else { "cannot open" }
+}
+
 /// Opens each candidate port and returns first port that replies with valid frame.
-fn scan(sink: &dyn Sink, preferred: Option<&str>) -> Option<(String, Box<dyn SerialPort>, u32)> {
+/// Without detector, returns result of each port, for example "COM3: in use".
+fn scan(sink: &dyn Sink, preferred: Option<&str>, stop: &AtomicBool) -> Result<Found, Vec<String>> {
+    let mut results = Vec::new();
     for name in candidate_ports(sink.extra_ports(), preferred) {
-        let Ok(mut port) = open(&name) else { continue };
-        if let Ok(count) = poll(port.as_mut()) {
-            return Some((name, port, count));
+        let mut port = match open(&name) {
+            Ok(port) => port,
+            Err(error) => {
+                results.push(format!("{name}: {}", open_failure(&error)));
+                continue;
+            }
+        };
+        sleep_until(Instant::now() + OPEN_SETTLE, stop);
+        let mut invalid = false;
+        for _ in 0..PROBE_ATTEMPTS {
+            match poll(port.as_mut()) {
+                Ok(count) => return Ok((name, port, count)),
+                Err(PollError::Invalid) => invalid = true,
+                Err(PollError::NoReply) => {}
+                Err(PollError::Port) => break,
+            }
+            if stop.load(Ordering::Relaxed) {
+                return Err(results);
+            }
         }
+        results.push(format!("{name}: {}", if invalid { "invalid reply" } else { "no reply" }));
     }
-    None
+    Err(results)
 }
 
 fn sleep_until(deadline: Instant, stop: &AtomicBool) {
@@ -133,21 +166,23 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
     let mut last_port: Option<String> = None;
     let mut searching_announced = false;
     let mut search_started = Instant::now();
-    let mut not_found_reported = false;
+    let mut last_report = String::new();
     while !stop.load(Ordering::Relaxed) {
         if !searching_announced {
             sink.connection(Connection::Searching);
             searching_announced = true;
             search_started = Instant::now();
-            not_found_reported = false;
+            last_report.clear();
         }
         let scan_started = Instant::now();
-        let (name, mut port, count) = match scan(sink, last_port.as_deref()) {
-            Some(found) => found,
-            None => {
-                if !not_found_reported && search_started.elapsed() >= NOT_FOUND_DELAY {
-                    sink.message("warning", "Detector not found");
-                    not_found_reported = true;
+        let (name, mut port, count) = match scan(sink, last_port.as_deref(), stop) {
+            Ok(found) => found,
+            Err(results) => {
+                // Reported after delay, and again only when result of a port changes
+                let report = if results.is_empty() { "no serial ports".to_string() } else { results.join("; ") };
+                if search_started.elapsed() >= NOT_FOUND_DELAY && report != last_report {
+                    sink.message("warning", &format!("Detector not found ({report})"));
+                    last_report = report;
                 }
                 sleep_until(scan_started + SCAN_INTERVAL, stop);
                 continue;
@@ -196,5 +231,21 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
             }
         }
         drop(port);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_open_errors() {
+        let denied = serialport::Error::new(serialport::ErrorKind::NoDevice, "Access is denied.");
+        assert_eq!(open_failure(&denied), "in use");
+        let busy = serialport::Error::new(serialport::ErrorKind::Unknown, "Device or resource busy");
+        assert_eq!(open_failure(&busy), "in use");
+        let missing =
+            serialport::Error::new(serialport::ErrorKind::NoDevice, "The system cannot find the file specified.");
+        assert_eq!(open_failure(&missing), "cannot open");
     }
 }

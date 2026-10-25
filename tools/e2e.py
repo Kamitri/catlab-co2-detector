@@ -18,7 +18,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from Xlib import X, display, protocol
 
 ROOT = Path(__file__).resolve().parents[1]
-APPLICATION = ROOT / "app/src-tauri/target/debug/co2-monitor"
+APPLICATION = ROOT / "app/src-tauri/target/debug/CATlab CO2 Monitor"
 DATA = ROOT / "CO2 NDIR Monitor/KQ/Na-ZY (09-11).txt"
 
 

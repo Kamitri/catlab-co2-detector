@@ -40,6 +40,10 @@ struct VirtualDevice {
 
 impl VirtualDevice {
     fn start(directory: &std::path::Path) -> Self {
+        Self::start_with(directory, &[])
+    }
+
+    fn start_with(directory: &std::path::Path, simulator_options: &[&str]) -> Self {
         let device = directory.join("device");
         let app = directory.join("app");
         let socat = Command::new("socat")
@@ -54,6 +58,7 @@ impl VirtualDevice {
         let simulator = Command::new("python3")
             .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/simulator.py"))
             .arg(&device)
+            .args(simulator_options)
             .spawn()
             .expect("Python 3 is required");
         Self { socat, simulator }
@@ -117,6 +122,43 @@ fn connects_polls_and_reconnects() {
         let interval = pair[1].0 - pair[0].0;
         assert!((800..=1300).contains(&interval), "Interval {interval} ms");
     }
+
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    handle.join().unwrap();
+    device.stop();
+    println!("{:#?}", recorder.messages.lock().unwrap());
+}
+
+#[test]
+#[ignore]
+fn reports_no_reply_and_accepts_slow_reply() {
+    let directory = tempfile::tempdir().unwrap();
+    let app_port = directory.path().join("app").display().to_string();
+    let device = VirtualDevice::start_with(directory.path(), &["--delay", "0.7"]);
+    thread::sleep(Duration::from_secs(1));
+
+    // Detector does not reply: scan reports port result
+    let signal = |name: &str| Command::new("kill").arg(name).arg(device.simulator.id().to_string()).status().unwrap();
+    signal("-STOP");
+    let recorder = Arc::new(Recorder { ports: vec![app_port.clone()], ..Default::default() });
+    let stop = Arc::new(AtomicBool::new(false));
+    let handle = spawn(recorder.clone(), stop.clone());
+    let no_reply = format!("{app_port}: no reply");
+    let reported = || {
+        recorder
+            .messages
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|text| text.starts_with("Detector not found (") && text.contains(&no_reply))
+    };
+    assert!(wait_for(reported, Duration::from_secs(25)), "{:#?}", recorder.messages.lock().unwrap());
+
+    // Detector replies after 700 ms: reply is accepted
+    signal("-CONT");
+    let connected = Connection::Connected { port: app_port.clone() };
+    assert!(wait_for(|| recorder.connections.lock().unwrap().contains(&connected), Duration::from_secs(15)));
+    assert!(wait_for(|| recorder.measurements.lock().unwrap().len() >= 3, Duration::from_secs(10)));
 
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     handle.join().unwrap();
