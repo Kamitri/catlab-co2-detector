@@ -19,6 +19,14 @@ export interface ChartMarker {
   label: string
 }
 
+/** Newest data point; shown with line and label while pointer is outside chart. */
+export interface ChartLatest {
+  x: number
+  y: number
+  /** Label text; `<br>` separates lines. */
+  text: string
+}
+
 export type DragMode = "zoom" | "pan"
 
 interface ChartProps {
@@ -35,6 +43,7 @@ interface ChartProps {
   showLegend?: boolean
   /** Clock time (ms) at x = 0 s; when set, top axis shows clock time. */
   clockStart?: number
+  latest?: ChartLatest
 }
 
 interface PlotElement extends HTMLDivElement {
@@ -70,6 +79,7 @@ export function Chart({
   dragMode,
   showLegend = false,
   clockStart,
+  latest,
 }: ChartProps) {
   const container = useRef<PlotElement>(null)
   const viewHandler = useRef(onViewChange)
@@ -79,6 +89,9 @@ export function Chart({
   // True while Plotly.react applies view from props; relayout events then come from app, not user
   const applying = useRef(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
+  // Pointer on chart shows hover line of Plotly; outside chart, line at newest data point is shown
+  const [pointerInside, setPointerInside] = useState(false)
+  const showLatest = latest !== undefined && !pointerInside
 
   useEffect(() => {
     const element = container.current
@@ -106,6 +119,60 @@ export function Chart({
       tickfont: { color: MUTED_COLOR, size: 11 },
       automargin: true,
       autorange: false,
+    }
+    const shapes: Partial<Plotly.Shape>[] = markers.map((marker) => ({
+      type: "line",
+      xref: "x",
+      yref: "paper",
+      x0: marker.x,
+      x1: marker.x,
+      y0: 0,
+      y1: 1,
+      line: { color: MUTED_COLOR, width: 1, dash: "dot" },
+    }))
+    const annotations: Partial<Plotly.Annotations>[] = markers.map((marker) => ({
+      x: marker.x,
+      xref: "x",
+      yref: "paper",
+      y: 1,
+      // Label is inside plot area below top edge, clear of clock axis tick labels
+      yanchor: "top",
+      // Label starts at marker line and extends right, clear of y axis tick labels
+      xanchor: "left",
+      xshift: 2,
+      text: marker.label,
+      showarrow: false,
+      bgcolor: "rgba(255,255,255,0.85)",
+      font: { size: 11, color: MUTED_COLOR },
+    }))
+    if (showLatest) {
+      // Same line as hover line of Plotly; label on side of line with more room
+      const right = latest.x > view.x[0] + 0.7 * (view.x[1] - view.x[0])
+      shapes.push({
+        type: "line",
+        xref: "x",
+        yref: "paper",
+        x0: latest.x,
+        x1: latest.x,
+        y0: 0,
+        y1: 1,
+        line: { color: TEXT_COLOR, width: 1, dash: "dot" },
+      })
+      annotations.push({
+        x: latest.x,
+        y: latest.y,
+        xref: "x",
+        yref: "y",
+        xanchor: right ? "right" : "left",
+        xshift: right ? -8 : 8,
+        text: latest.text,
+        align: "left",
+        showarrow: false,
+        bgcolor: "#ffffff",
+        bordercolor: GRID_COLOR,
+        borderpad: 4,
+        font: { size: 12, color: TEXT_COLOR },
+      })
     }
     const layout: Partial<Plotly.Layout> = {
       datarevision: revision,
@@ -145,31 +212,8 @@ export function Chart({
         title: { text: yTitle, font: { size: 12, color: MUTED_COLOR } },
         tickformat: ",~r",
       },
-      shapes: markers.map((marker) => ({
-        type: "line",
-        xref: "x",
-        yref: "paper",
-        x0: marker.x,
-        x1: marker.x,
-        y0: 0,
-        y1: 1,
-        line: { color: MUTED_COLOR, width: 1, dash: "dot" },
-      })),
-      annotations: markers.map((marker) => ({
-        x: marker.x,
-        xref: "x",
-        yref: "paper",
-        y: 1,
-        // Label is inside plot area below top edge, clear of clock axis tick labels
-        yanchor: "top",
-        // Label starts at marker line and extends right, clear of y axis tick labels
-        xanchor: "left",
-        xshift: 2,
-        text: marker.label,
-        showarrow: false,
-        bgcolor: "rgba(255,255,255,0.85)",
-        font: { size: 11, color: MUTED_COLOR },
-      })),
+      shapes,
+      annotations,
     }
     // showTips off: Plotly tip "Double-click to zoom back out" does not apply, double-click is off
     const config: Partial<Plotly.Config> = {
@@ -183,7 +227,7 @@ export function Chart({
     void Plotly.react(element, data, layout, config).finally(() => {
       applying.current = false
     })
-  }, [traces, xTitle, yTitle, markers, revision, view, dragMode, spaceHeld, showLegend, clockStart])
+  }, [traces, xTitle, yTitle, markers, revision, view, dragMode, spaceHeld, showLegend, clockStart, latest, showLatest])
 
   // Zoom, pan, and wheel zoom by user report new view
   useEffect(() => {
@@ -288,5 +332,12 @@ export function Chart({
     }
   }, [])
 
-  return <div ref={container} className="h-full w-full" />
+  return (
+    <div
+      ref={container}
+      className="h-full w-full"
+      onMouseEnter={() => setPointerInside(true)}
+      onMouseLeave={() => setPointerInside(false)}
+    />
+  )
 }

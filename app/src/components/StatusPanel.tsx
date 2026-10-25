@@ -81,7 +81,7 @@ export function StatusPanel({
           <Row label="Sample" value={activeRun.parameters.sample} />
           <Row label="Elapsed" value={formatDuration((now - activeRun.startedAt) / 1000)} />
           <Row label="Delay time" value={`${formatInteger(activeRun.parameters.delayS)} s`} />
-          <Row label="Samples" value={formatInteger(measurements.timestamps.length)} />
+          <Row label="# data points" value={formatInteger(measurements.timestamps.length)} />
           <Row label="Missing data" value={`${formatInteger(missingS)} s`} />
           <Row label="Equilibrium" value={equilibriumAt !== null ? formatDuration(equilibriumAt) : "–"} />
         </Section>
