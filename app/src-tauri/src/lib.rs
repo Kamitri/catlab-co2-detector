@@ -363,6 +363,19 @@ fn abort_run(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<R
     end_run(&app, &state, id, RunStatus::Aborted, None)
 }
 
+/// Deletes chart measurements from `from` to now, except measurements of runs; returns end time.
+#[tauri::command]
+fn clear_chart(app: AppHandle, state: State<AppState>, from: i64) -> CommandResult<i64> {
+    let database = lock(&state.database);
+    if database.active_run().map_err(error_text)?.is_some() {
+        return Err("Run in progress".into());
+    }
+    let to = now_ms();
+    database.delete_measurements_outside_runs(from, to).map_err(error_text)?;
+    log(&app, &database, "info", "Chart cleared");
+    Ok(to)
+}
+
 #[tauri::command]
 fn list_runs(state: State<AppState>) -> CommandResult<Vec<Run>> {
     lock(&state.database).runs().map_err(error_text)
@@ -495,6 +508,7 @@ pub fn run() {
             export_run,
             finish_run,
             abort_run,
+            clear_chart,
             list_runs,
             delete_run,
             log_message,

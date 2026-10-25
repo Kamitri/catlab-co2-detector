@@ -77,11 +77,16 @@ impl Database {
 
     /// Deletes measurements older than cutoff that do not belong to any run.
     pub fn prune_measurements(&self, cutoff: i64) -> DbResult<usize> {
+        self.delete_measurements_outside_runs(i64::MIN, cutoff - 1)
+    }
+
+    /// Deletes measurements from `from` to `to` (inclusive) that do not belong to any run.
+    pub fn delete_measurements_outside_runs(&self, from: i64, to: i64) -> DbResult<usize> {
         self.connection.execute(
-            "DELETE FROM measurements WHERE timestamp < ?1 AND NOT EXISTS (
+            "DELETE FROM measurements WHERE timestamp >= ?1 AND timestamp <= ?2 AND NOT EXISTS (
                 SELECT 1 FROM runs WHERE measurements.timestamp >= runs.started_at
                 AND measurements.timestamp <= COALESCE(runs.finished_at, 9223372036854775807))",
-            params![cutoff],
+            params![from, to],
         )
     }
 
@@ -263,6 +268,19 @@ mod tests {
         }
         database.prune_measurements(3000).unwrap();
         assert_eq!(database.measurements(0, 3000).unwrap().timestamps, vec![1500]);
+    }
+
+    #[test]
+    fn clear_keeps_run_measurements() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(&directory.path().join("test.db")).unwrap();
+        let run_id = database.insert_run(1000, 1785.9, 0.0111, &RunParameters::default()).unwrap();
+        database.set_status(run_id, RunStatus::Finished, Some(2000)).unwrap();
+        for timestamp in [500, 1500, 2500, 3500] {
+            database.insert_measurement(timestamp, 100).unwrap();
+        }
+        assert_eq!(database.delete_measurements_outside_runs(1000, 3000).unwrap(), 1);
+        assert_eq!(database.measurements(0, 4000).unwrap().timestamps, vec![500, 1500, 3500]);
     }
 
     #[test]

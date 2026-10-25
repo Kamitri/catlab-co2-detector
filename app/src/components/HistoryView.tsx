@@ -316,6 +316,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
               onViewChange={chartView.setView}
               dragMode={dragMode}
               showLegend={overlay}
+              clockStart={overlay ? undefined : shown[0]?.startedAt}
             />
           </div>
         </div>

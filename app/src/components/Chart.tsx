@@ -33,6 +33,8 @@ interface ChartProps {
   onViewChange: (view: View) => void
   dragMode: DragMode
   showLegend?: boolean
+  /** Clock time (ms) at x = 0 s; when set, top axis shows clock time. */
+  clockStart?: number
 }
 
 interface PlotElement extends HTMLDivElement {
@@ -43,6 +45,15 @@ interface PlotElement extends HTMLDivElement {
     xaxis: { range: [number, number] }
     yaxis: { range: [number, number] }
   }
+}
+
+/**
+ * Clock axis value (ms) for x (s). Plotly shows date axes in UTC, so value is shifted by
+ * time zone offset to show local clock time.
+ */
+function clockValue(clockStart: number, seconds: number): number {
+  const time = clockStart + seconds * 1000
+  return time - new Date(time).getTimezoneOffset() * 60_000
 }
 
 /** Space pans only when focus is outside text fields and when a dialog is not open. */
@@ -62,10 +73,13 @@ export function Chart({
   onViewChange,
   dragMode,
   showLegend = false,
+  clockStart,
 }: ChartProps) {
   const container = useRef<PlotElement>(null)
   const viewHandler = useRef(onViewChange)
   viewHandler.current = onViewChange
+  const clockStartRef = useRef(clockStart)
+  clockStartRef.current = clockStart
   // True while Plotly.react applies view from props; relayout events then come from app, not user
   const applying = useRef(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
@@ -84,6 +98,10 @@ export function Chart({
       line: { color: trace.color ?? CHART_COLORS[index % CHART_COLORS.length], width: 1.75 },
       hovertemplate: trace.hovertemplate ?? "%{y:,.4~f}<extra>%{fullData.name}</extra>",
     }))
+    // Empty trace makes Plotly draw clock axis
+    if (clockStart !== undefined) {
+      data.push({ type: "scatter", x: [], y: [], xaxis: "x2", hoverinfo: "skip", showlegend: false })
+    }
     const axis = {
       gridcolor: GRID_COLOR,
       zeroline: false,
@@ -99,7 +117,7 @@ export function Chart({
       font: { family: CHART_FONT, size: 12, color: TEXT_COLOR },
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
-      margin: { l: 64, r: 16, t: 24, b: 48 },
+      margin: { l: 64, r: 16, t: clockStart === undefined ? 24 : 36, b: 48 },
       hovermode: "x unified",
       hoverlabel: { bgcolor: "#ffffff", bordercolor: GRID_COLOR, font: { family: CHART_FONT, color: TEXT_COLOR } },
       showlegend: showLegend,
@@ -112,6 +130,19 @@ export function Chart({
         hoverformat: ",.0f",
         tickformat: ",~r",
       },
+      // Overlaid axis pans and zooms with x axis during drag. Key is left out without clock
+      // time: Plotly fails on `xaxis2: undefined`.
+      ...(clockStart !== undefined && {
+        xaxis2: {
+          ...axis,
+          type: "date",
+          overlaying: "x",
+          side: "top",
+          range: [clockValue(clockStart, view.x[0]), clockValue(clockStart, view.x[1])],
+          showgrid: false,
+          tickformat: "%H:%M:%S",
+        },
+      }),
       yaxis: {
         ...axis,
         range: [...view.y],
@@ -133,11 +164,14 @@ export function Chart({
         xref: "x",
         yref: "paper",
         y: 1,
-        yanchor: "bottom",
+        // Label is inside plot area below top edge, clear of clock axis tick labels
+        yanchor: "top",
         // Label starts at marker line and extends right, clear of y axis tick labels
         xanchor: "left",
+        xshift: 2,
         text: marker.label,
         showarrow: false,
+        bgcolor: "rgba(255,255,255,0.85)",
         font: { size: 11, color: MUTED_COLOR },
       })),
     }
@@ -153,7 +187,7 @@ export function Chart({
     void Plotly.react(element, data, layout, config).finally(() => {
       applying.current = false
     })
-  }, [traces, xTitle, yTitle, markers, revision, view, dragMode, spaceHeld, showLegend])
+  }, [traces, xTitle, yTitle, markers, revision, view, dragMode, spaceHeld, showLegend, clockStart])
 
   // Zoom, pan, and wheel zoom by user report new view
   useEffect(() => {
@@ -188,9 +222,12 @@ export function Chart({
         const shiftY = ((moveEvent.clientY - origin.clientY) / height) * (origin.y[1] - origin.y[0])
         cancelAnimationFrame(frame)
         frame = requestAnimationFrame(() => {
+          const x: [number, number] = [origin.x[0] - shiftX, origin.x[1] - shiftX]
+          const clock = clockStartRef.current
           void Plotly.relayout(element, {
-            "xaxis.range": [origin.x[0] - shiftX, origin.x[1] - shiftX],
+            "xaxis.range": x,
             "yaxis.range": [origin.y[0] + shiftY, origin.y[1] + shiftY],
+            ...(clock === undefined ? {} : { "xaxis2.range": [clockValue(clock, x[0]), clockValue(clock, x[1])] }),
           })
         })
       }

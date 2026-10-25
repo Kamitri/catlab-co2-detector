@@ -186,9 +186,22 @@ export function useMonitor() {
     lastResult,
   }
 
+  // Chart starts again at time 0 = end of deleted interval; keeps measurements that arrived after it
+  const clearChart = useCallback(async () => {
+    const end = await api.clearChart(viewStartRef.current)
+    const current = measurements.current
+    const keep = current.timestamps.findIndex((timestamp) => timestamp > end)
+    measurements.current =
+      keep < 0 ? { timestamps: [], counts: [] } : { timestamps: current.timestamps.slice(keep), counts: current.counts.slice(keep) }
+    viewStartRef.current = end
+    setViewStart(end)
+    setMeasurementsVersion((version) => version + 1)
+  }, [])
+
   return {
     state,
     setSettings,
+    clearChart,
     dismissRecovery: () => setRecoveredRun(null),
     applyRun,
   }

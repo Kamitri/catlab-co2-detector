@@ -18,9 +18,10 @@ interface LiveViewProps {
   onMarker: () => void
   onFinish: () => void
   onAbort: () => void
+  onClear: () => void
 }
 
-export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAbort }: LiveViewProps) {
+export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAbort, onClear }: LiveViewProps) {
   const { activeRun, measurements, measurementsVersion, markers, settings, viewStart } = state
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
   // Clock labels for hover outside run; only labels of new measurements are formatted on update
@@ -82,9 +83,15 @@ export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAb
               </Button>
             </>
           ) : (
-            <Button onClick={onStart} disabled={!state.ready}>
-              Start
-            </Button>
+            <>
+              <Button onClick={onStart} disabled={!state.ready}>
+                Start
+              </Button>
+              <div className="mx-1 h-5 w-px bg-border" />
+              <Button variant="destructive" onClick={onClear} disabled={!state.ready}>
+                Clear chart
+              </Button>
+            </>
           )}
         </div>
         <ChartControls
@@ -111,6 +118,7 @@ export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAb
           view={chartView.view}
           onViewChange={chartView.setView}
           dragMode={dragMode}
+          clockStart={viewStart}
         />
       </div>
     </div>
