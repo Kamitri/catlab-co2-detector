@@ -1,4 +1,4 @@
-import { CircleX, Info, TriangleAlert } from "lucide-react"
+import { CircleX, Info, TriangleAlert, X } from "lucide-react"
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -27,7 +27,7 @@ function visible(message: Message, filter: Filter): boolean {
   return true
 }
 
-export function MessageLog({ messages }: { messages: Message[] }) {
+export function MessageLog({ messages, onDelete }: { messages: Message[]; onDelete: (id: number) => void }) {
   const [filter, setFilter] = useState<Filter>("all")
   const viewport = useRef<HTMLDivElement>(null)
   const following = useRef(true)
@@ -82,7 +82,7 @@ export function MessageLog({ messages }: { messages: Message[] }) {
                 )}
                 <li
                   className={cn(
-                    "grid grid-cols-[14px_56px_1fr] items-start gap-2 border-b border-border/60 px-4 py-1.5 text-xs leading-4",
+                    "grid grid-cols-[14px_56px_1fr_14px] items-start gap-2 border-b border-border/60 px-4 py-1.5 text-xs leading-4",
                     style.rowClass,
                   )}
                   title={`${style.label} · ${new Date(message.timestamp).toLocaleString("en-GB")}`}
@@ -92,6 +92,14 @@ export function MessageLog({ messages }: { messages: Message[] }) {
                     {formatClock(message.timestamp)}
                   </span>
                   <span className="break-words">{message.text}</span>
+                  <button
+                    type="button"
+                    aria-label="Delete message"
+                    className="mt-px rounded-sm text-muted-foreground/70 hover:text-foreground"
+                    onClick={() => onDelete(message.id)}
+                  >
+                    <X className="size-3.5" />
+                  </button>
                 </li>
               </Fragment>
             )

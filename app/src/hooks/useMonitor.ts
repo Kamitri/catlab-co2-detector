@@ -208,6 +208,10 @@ export function useMonitor() {
     setSettings,
     setSample,
     clearChart,
+    deleteMessage: async (id: number) => {
+      await api.deleteMessage(id)
+      setMessages((list) => list.filter((message) => message.id !== id))
+    },
     dismissRecovery: () => setRecoveredRun(null),
     applyRun,
   }

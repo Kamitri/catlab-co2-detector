@@ -213,7 +213,7 @@ impl<'a> BlockRow<'a> {
     }
 }
 
-// Columns: data A to H, parameter block J to N, soap film times P to R, chart from T
+// Columns: data A to H, parameter block J to N, soap film times P to R with chart below
 const BLOCK_GROUP: u16 = 9;
 const BLOCK_LABEL: u16 = 10;
 const BLOCK_VALUE: u16 = 11;
@@ -222,7 +222,6 @@ const BLOCK_NOTE: u16 = 13;
 const SOAP_INDEX: u16 = 15;
 const SOAP_TIME: u16 = 16;
 const SOAP_FLOW: u16 = 17;
-const CHART_COLUMN: u16 = 19;
 /// First row of parameter table (0-based); header is row above.
 const TABLE_ROW: u32 = 7;
 
@@ -424,7 +423,13 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     for (index, row_data) in inputs.iter().enumerate() {
         let row = input_start + index as u32;
         write_label(sheet, row, BLOCK_LABEL, row_data.label, &styles.input_label)?;
-        sheet.write_number_with_format(row, BLOCK_VALUE, row_data.value, &styles.input)?;
+        // Decimal places of balance (0.0001 g) and soap film flowmeter (0.1 mL)
+        let value_format = match row_data.name {
+            Some("SampleMass") => styles.input.clone().set_num_format("0.0000"),
+            Some("SoapVolume") => styles.input.clone().set_num_format("0.0"),
+            _ => styles.input.clone(),
+        };
+        sheet.write_number_with_format(row, BLOCK_VALUE, row_data.value, &value_format)?;
         sheet.write_string_with_format(row, BLOCK_UNIT, row_data.unit, &styles.input)?;
         if let Some(local) = row_data.name {
             define(local, row, BLOCK_VALUE);
@@ -557,7 +562,8 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         chart.x_axis().set_name("t (s)");
         chart.y_axis().set_name("CO₂ (ppmv)");
         chart.set_width(720).set_height(420);
-        sheet.insert_chart(0, CHART_COLUMN, &chart)?;
+        // Below soap film table, beside parameter table
+        sheet.insert_chart(TABLE_ROW + soap_rows + 1, SOAP_INDEX, &chart)?;
     }
 
     for (local, reference) in names {

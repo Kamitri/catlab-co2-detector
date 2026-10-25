@@ -1,3 +1,5 @@
+import { X } from "lucide-react"
+
 import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { useRunForm } from "@/hooks/useRunForm"
 import type { Run } from "@/lib/api"
 import { formatDateTime, formatNumber } from "@/lib/format"
-import { parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
+import { DECIMALS, parseNumber, soapFlowRate, soapFlowRates, soapTimeKey, type NumericKey } from "@/lib/runForm"
 
 interface NumberField {
   key: NumericKey
@@ -70,6 +72,7 @@ export function SoapFilmFields({
               value={values.soapVolumeMl}
               unit="mL"
               invalid={showValidation && errors.has("soapVolumeMl")}
+              decimals={DECIMALS.soapVolumeMl}
               onChange={(value) => set("soapVolumeMl", value)}
             />
           </div>
@@ -84,9 +87,25 @@ export function SoapFilmFields({
                 <div className="w-35">
                   <NumberInput id={key} value={text} unit="s" invalid={invalid} onChange={(value) => setTime(index, value)} />
                 </div>
-                <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                <span className="w-24 whitespace-nowrap text-muted-foreground tabular-nums">
                   {time > 0 && volume > 0 ? `${formatNumber(soapFlowRate(volume, time))} mL/min` : ""}
                 </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Delete time ${index + 1}`}
+                  className="text-muted-foreground"
+                  disabled={values.soapTimesS.length === 1}
+                  onClick={() =>
+                    set(
+                      "soapTimesS",
+                      values.soapTimesS.filter((_, position) => position !== index),
+                    )
+                  }
+                >
+                  <X />
+                </Button>
               </div>
             </FormRow>
           )
@@ -130,6 +149,7 @@ export function RunFields({ form, blankRuns, showDelay, showValidation, columns 
             value={values[field.key]}
             unit={field.unit}
             invalid={invalid(field.key)}
+            decimals={DECIMALS[field.key]}
             onChange={(value) => set(field.key, value)}
           />
         </FormRow>

@@ -38,7 +38,7 @@ function startDefaults(previous: Run | undefined, settings: Settings): RunParame
 }
 
 export default function App() {
-  const { state, setSettings, setSample, dismissRecovery, applyRun, clearChart } = useMonitor()
+  const { state, setSettings, setSample, dismissRecovery, applyRun, clearChart, deleteMessage } = useMonitor()
   const [view, setView] = useState<View>("live")
   const [dialog, setDialog] = useState<DialogState>(null)
   const [runs, setRuns] = useState<Run[]>([])
@@ -107,7 +107,6 @@ export default function App() {
               state={state}
               onSample={() => void openSample()}
               onStart={() => void start()}
-              onValveOpen={() => activeRun && void handle(() => api.addMarker(activeRun.id, "Valve open", true))}
               onMarker={() => setDialog("marker")}
               onFinish={() => setDialog("finish")}
               onAbort={() => setDialog("abort")}
@@ -119,7 +118,7 @@ export default function App() {
             <AboutView />
           )}
         </main>
-        <StatusPanel state={state} now={now} />
+        <StatusPanel state={state} now={now} onDeleteMessage={(id) => void handle(() => deleteMessage(id))} />
       </div>
 
       {dialog === "sample" && settings && (
@@ -158,7 +157,7 @@ export default function App() {
           onCancel={() => setDialog(null)}
           onAdd={(label) => {
             setDialog(null)
-            void handle(() => api.addMarker(activeRun.id, label, false)).then(() => applyRun(activeRun))
+            void handle(() => api.addMarker(activeRun.id, label)).then(() => applyRun(activeRun))
           }}
         />
       )}

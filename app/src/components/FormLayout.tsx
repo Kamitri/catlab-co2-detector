@@ -2,6 +2,7 @@ import { createContext, useContext } from "react"
 
 import { Label } from "@/components/ui/label"
 import { FIELD_WRAPPER_CLASS } from "@/lib/fieldStyle"
+import { parseNumber } from "@/lib/runForm"
 import { stepValue } from "@/lib/step"
 import { cn } from "@/lib/utils"
 
@@ -62,7 +63,8 @@ export function FormRow({ label, id, invalid, wide, children }: FormRowProps) {
   return (
     <>
       <Label htmlFor={id} className={cn("font-normal text-muted-foreground", invalid && "text-destructive")}>
-        <span className="truncate">{label}</span>
+        {/* Line height above leading-none of Label keeps descenders, e.g. "p", inside truncated span */}
+        <span className="truncate leading-5">{label}</span>
       </Label>
       <div className={cn("min-w-0", wide && columns === 2 && "col-span-3")}>{children}</div>
     </>
@@ -75,11 +77,13 @@ interface NumberInputProps {
   unit?: React.ReactNode
   invalid?: boolean
   autoFocus?: boolean
+  /** Fixed decimal places; value is formatted when field loses focus. */
+  decimals?: number
   onChange: (value: string) => void
 }
 
 /** Right-aligned number with unit suffix. Arrow keys step value; Shift steps by ten units. */
-export function NumberInput({ id, value, unit, invalid, autoFocus, onChange }: NumberInputProps) {
+export function NumberInput({ id, value, unit, invalid, autoFocus, decimals, onChange }: NumberInputProps) {
   return (
     <div data-invalid={invalid} className={cn("flex h-7 items-center px-2", FIELD_WRAPPER_CLASS)}>
       <input
@@ -91,6 +95,12 @@ export function NumberInput({ id, value, unit, invalid, autoFocus, onChange }: N
         aria-invalid={invalid}
         className="min-w-0 flex-1 bg-transparent text-right tabular-nums outline-none"
         onChange={(event) => onChange(event.target.value)}
+        onBlur={() => {
+          const number = parseNumber(value)
+          if (decimals !== undefined && Number.isFinite(number) && number.toFixed(decimals) !== value) {
+            onChange(number.toFixed(decimals))
+          }
+        }}
         onKeyDown={(event) => {
           if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
           event.preventDefault()
