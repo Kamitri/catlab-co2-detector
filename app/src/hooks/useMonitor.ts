@@ -17,6 +17,8 @@ import { formatDuration } from "@/lib/format"
 
 /** Time span shown outside run (ms). */
 export const MONITOR_SPAN_MS = 30 * 60 * 1000
+/** Outside run, view starts again with last 30 min after this time, to keep memory bounded (ms). */
+const MONITOR_RESTART_MS = 24 * 60 * 60 * 1000
 const MESSAGE_LIMIT = 500
 
 export interface MonitorState {
@@ -29,6 +31,8 @@ export interface MonitorState {
   latest: MeasurementEvent | null
   measurements: Measurements
   measurementsVersion: number
+  /** Time 0 of chart (ms since epoch): run start, or first measurement shown outside run. */
+  viewStart: number
   markers: Marker[]
   equilibriumAt: number | null
   lastRun: Run | null
@@ -50,6 +54,8 @@ export function useMonitor() {
   const [ready, setReady] = useState(false)
 
   const measurements = useRef<Measurements>({ timestamps: [], counts: [] })
+  const [viewStart, setViewStart] = useState(() => Date.now())
+  const viewStartRef = useRef(viewStart)
   const activeRunRef = useRef<Run | null>(null)
   const equilibriumRunId = useRef<number | null>(null)
 
@@ -67,6 +73,10 @@ export function useMonitor() {
       }
     }
     measurements.current = loaded
+    // Fixed time 0 keeps chart from shifting as measurements arrive
+    const start = run ? run.startedAt : (loaded.timestamps[0] ?? now)
+    viewStartRef.current = start
+    setViewStart(start)
     setMarkers(run ? await api.getMarkers(run.id) : [])
     setMeasurementsVersion((version) => version + 1)
   }, [])
@@ -123,14 +133,8 @@ export function useMonitor() {
         const current = measurements.current
         current.timestamps.push(measurement.timestamp)
         current.counts.push(measurement.count)
-        if (!activeRunRef.current) {
-          const cutoff = measurement.timestamp - MONITOR_SPAN_MS
-          let drop = 0
-          while (drop < current.timestamps.length && current.timestamps[drop] < cutoff) drop++
-          if (drop > 0) {
-            current.timestamps.splice(0, drop)
-            current.counts.splice(0, drop)
-          }
+        if (!activeRunRef.current && measurement.timestamp - viewStartRef.current > MONITOR_RESTART_MS) {
+          void loadMeasurements(null)
         }
         setLatest(measurement)
         setMeasurementsVersion((version) => version + 1)
@@ -175,6 +179,7 @@ export function useMonitor() {
     latest,
     measurements: measurements.current,
     measurementsVersion,
+    viewStart,
     markers,
     equilibriumAt,
     lastRun,

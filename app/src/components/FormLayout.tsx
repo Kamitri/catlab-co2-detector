@@ -20,13 +20,26 @@ export function FormGroup({ title, children }: { title: React.ReactNode; childre
 }
 
 /** Grid of label and field pairs; two columns place two pairs per row. */
-export function FormGrid({ columns = 1, children }: { columns?: Columns; children: React.ReactNode }) {
+export function FormGrid({
+  columns = 1,
+  compact = false,
+  children,
+}: {
+  columns?: Columns
+  /** Narrow label column, for popovers. */
+  compact?: boolean
+  children: React.ReactNode
+}) {
   return (
     <ColumnsContext.Provider value={columns}>
       <div
         className={cn(
           "grid items-center gap-x-3 gap-y-1.5",
-          columns === 2 ? "grid-cols-[112px_minmax(0,1fr)_84px_minmax(0,1fr)]" : "grid-cols-[128px_minmax(0,1fr)]",
+          columns === 2
+            ? "grid-cols-[112px_minmax(0,1fr)_84px_minmax(0,1fr)]"
+            : compact
+              ? "grid-cols-[48px_minmax(0,1fr)]"
+              : "grid-cols-[128px_minmax(0,1fr)]",
         )}
       >
         {children}
