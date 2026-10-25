@@ -88,7 +88,7 @@ export default function App() {
           </TabsList>
         </Tabs>
         <div className="ml-auto">
-          <Button size="sm" variant="ghost" disabled={!settings} onClick={() => setDialog("settings")}>
+          <Button variant="ghost" disabled={!settings} onClick={() => setDialog("settings")}>
             Settings
           </Button>
         </div>

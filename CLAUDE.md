@@ -8,3 +8,9 @@
 - Each status message reports the event once, for example "Disconnected from COM3". Do not append a reason that repeats the event.
 - Use plain labels, not internal jargon ("Missing data", not "Gaps").
 - Keep the teal palette defined in `app/src/index.css`; do not return to black and grey.
+
+## UI style
+
+- Forms use `FormGroup`, `FormGrid` and `FormRow` from `app/src/components/FormLayout.tsx`: label on the left, field on the right, fields grouped by topic.
+- Numbers use `NumberInput`: right-aligned, unit inside the field, not in the label.
+- Controls are 28 px tall (`h-7`) with 13 px text; fields have filled background without border at rest (`FIELD_CLASS`).

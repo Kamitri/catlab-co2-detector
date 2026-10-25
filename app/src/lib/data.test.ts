@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
 import { plotlyLocalTime } from "@/lib/format"
+import { stepValue } from "@/lib/step"
 
 const options = { bandPercent: 3, durationS: 600, baselineWindowS: 60, delayS: 0 }
 
@@ -49,5 +50,15 @@ describe("plotlyLocalTime", () => {
   it("uses local time", () => {
     const timestamp = new Date(2026, 9, 24, 7, 5, 3, 9).getTime()
     expect(plotlyLocalTime(timestamp)).toBe("2026-10-24 07:05:03.009")
+  })
+})
+
+describe("stepValue", () => {
+  it("steps by last decimal place", () => {
+    expect(stepValue("0.56", 1)).toBe("0.57")
+    expect(stepValue("60", -1)).toBe("59")
+    expect(stepValue("1,5", 1)).toBe("1.6")
+    expect(stepValue("30.0", 1, 10)).toBe("31.0")
+    expect(stepValue("", 1)).toBe("")
   })
 })

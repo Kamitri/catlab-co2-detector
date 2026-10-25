@@ -1,110 +1,133 @@
+import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayout"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { useRunForm } from "@/hooks/useRunForm"
 import type { Run } from "@/lib/api"
 import { formatDateTime } from "@/lib/format"
 import type { NumericKey } from "@/lib/runForm"
-import { cn } from "@/lib/utils"
 
-const NUMERIC_FIELDS: [NumericKey, React.ReactNode][] = [
-  ["flowRateMlMin", "Flow rate (mL/min)"],
-  ["massG", "Sorbent mass (g)"],
-  ["densityGMl", "Sorbent density (g/mL)"],
-  ["pressureBar", "Pressure (bar)"],
-  ["temperatureC", "Temperature (°C)"],
-  ["delayS", "Delay time (s)"],
-  ["baselineWindowS", "Baseline window (s)"],
-  [
-    "coWindowS",
-    <>
-      C<sub>0</sub> window (s)
-    </>,
-  ],
+interface NumberField {
+  key: NumericKey
+  label: React.ReactNode
+  unit: string
+}
+
+const SORBENT_FIELDS: NumberField[] = [
+  { key: "massG", label: "Mass", unit: "g" },
+  { key: "densityGMl", label: "Density", unit: "g/mL" },
 ]
 
-export function Field({
-  label,
-  id,
-  invalid,
-  className,
-  children,
-}: {
-  label: React.ReactNode
-  id: string
-  invalid?: boolean
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className={cn("grid gap-1.5", className)}>
-      <Label htmlFor={id} className={cn(invalid && "text-destructive")}>
-        <span>{label}</span>
-      </Label>
-      {children}
-    </div>
-  )
-}
+const GAS_FIELDS: NumberField[] = [
+  { key: "flowRateMlMin", label: "Flow rate", unit: "mL/min" },
+  { key: "pressureBar", label: "Pressure", unit: "bar" },
+  { key: "temperatureC", label: "Temperature", unit: "°C" },
+]
+
+const CALCULATION_FIELDS: NumberField[] = [
+  { key: "baselineWindowS", label: "Baseline window", unit: "s" },
+  {
+    key: "coWindowS",
+    label: (
+      <>
+        C<sub>0</sub> window
+      </>
+    ),
+    unit: "s",
+  },
+  { key: "delayS", label: "Delay time", unit: "s" },
+]
 
 interface RunFieldsProps {
   form: ReturnType<typeof useRunForm>
   blankRuns: Run[]
   showDelay: boolean
   showValidation: boolean
+  /** Two columns in dialogs; one column in narrow History panel. */
+  columns?: 1 | 2
 }
 
-export function RunFields({ form, blankRuns, showDelay, showValidation }: RunFieldsProps) {
+export function RunFields({ form, blankRuns, showDelay, showValidation, columns = 2 }: RunFieldsProps) {
   const { values, set, errors } = form
   const invalid = (key: string) => showValidation && errors.has(key)
-  const numericFields = NUMERIC_FIELDS.filter(([key]) => showDelay || key !== "delayS")
+
+  const numberRows = (fields: NumberField[]) =>
+    fields
+      .filter((field) => showDelay || field.key !== "delayS")
+      .map((field) => (
+        <FormRow key={field.key} label={field.label} id={field.key} invalid={invalid(field.key)}>
+          <NumberInput
+            id={field.key}
+            value={values[field.key]}
+            unit={field.unit}
+            invalid={invalid(field.key)}
+            onChange={(value) => set(field.key, value)}
+          />
+        </FormRow>
+      ))
 
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-      <Field label="Sample" id="sample" invalid={invalid("sample")}>
-        <Input
-          id="sample"
-          value={values.sample}
-          aria-invalid={invalid("sample")}
-          autoFocus
-          onChange={(event) => set("sample", event.target.value)}
+    <div className="grid gap-3">
+      <FormGroup title="Sample">
+        <FormGrid columns={columns}>
+          <FormRow label="Sample" id="sample" invalid={invalid("sample")} wide>
+            <Input
+              id="sample"
+              value={values.sample}
+              aria-invalid={invalid("sample")}
+              autoFocus
+              autoComplete="off"
+              onChange={(event) => set("sample", event.target.value)}
+            />
+          </FormRow>
+          <FormRow label="Operator" id="operator" wide>
+            <Input
+              id="operator"
+              value={values.operator}
+              autoComplete="off"
+              onChange={(event) => set("operator", event.target.value)}
+            />
+          </FormRow>
+        </FormGrid>
+      </FormGroup>
+      <FormGroup title="Sorbent">
+        <FormGrid columns={columns}>{numberRows(SORBENT_FIELDS)}</FormGrid>
+      </FormGroup>
+      <FormGroup title="Gas">
+        <FormGrid columns={columns}>{numberRows(GAS_FIELDS)}</FormGrid>
+      </FormGroup>
+      <FormGroup title="Calculation">
+        <FormGrid columns={columns}>
+          {numberRows(CALCULATION_FIELDS)}
+          <FormRow label="Blank run" id="blankRun" wide>
+            <Select
+              value={values.blankRunId === null ? "none" : String(values.blankRunId)}
+              onValueChange={(value) => set("blankRunId", value === "none" ? null : Number(value))}
+            >
+              <SelectTrigger id="blankRun" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {blankRuns.map((run) => (
+                  <SelectItem key={run.id} value={String(run.id)}>
+                    {run.parameters.sample} · {formatDateTime(run.startedAt)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+        </FormGrid>
+      </FormGroup>
+      <FormGroup title="Note">
+        <Textarea
+          id="note"
+          aria-label="Note"
+          rows={2}
+          value={values.note}
+          onChange={(event) => set("note", event.target.value)}
         />
-      </Field>
-      <Field label="Operator" id="operator">
-        <Input id="operator" value={values.operator} onChange={(event) => set("operator", event.target.value)} />
-      </Field>
-      {numericFields.map(([key, label]) => (
-        <Field key={key} label={label} id={key} invalid={invalid(key)}>
-          <Input
-            id={key}
-            inputMode="decimal"
-            value={values[key]}
-            aria-invalid={invalid(key)}
-            onChange={(event) => set(key, event.target.value)}
-          />
-        </Field>
-      ))}
-      <Field label="Blank run" id="blankRun">
-        <Select
-          value={values.blankRunId === null ? "none" : String(values.blankRunId)}
-          onValueChange={(value) => set("blankRunId", value === "none" ? null : Number(value))}
-        >
-          <SelectTrigger id="blankRun" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None</SelectItem>
-            {blankRuns.map((run) => (
-              <SelectItem key={run.id} value={String(run.id)}>
-                {run.parameters.sample} · {formatDateTime(run.startedAt)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="Note" id="note" className="col-span-2">
-        <Textarea id="note" rows={2} value={values.note} onChange={(event) => set("note", event.target.value)} />
-      </Field>
+      </FormGroup>
     </div>
   )
 }

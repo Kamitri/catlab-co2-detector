@@ -49,7 +49,7 @@ export function MessageLog({ messages }: { messages: Message[] }) {
       <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
         <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Messages</h3>
         <Select value={filter} onValueChange={(value) => setFilter(value as Filter)}>
-          <SelectTrigger size="sm" className="h-7 w-auto gap-1.5 text-xs">
+          <SelectTrigger size="sm" className="w-auto gap-1 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end">

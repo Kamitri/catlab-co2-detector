@@ -1,26 +1,25 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog"
 import { useEffect, useState } from "react"
 
-import { Field } from "@/components/RunForm"
+import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayout"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
 import { api, type Settings } from "@/lib/api"
 import { VENDOR_EXPONENT, VENDOR_SCALE } from "@/lib/data"
 import { parseNumber } from "@/lib/runForm"
 
-const NUMBER_FIELDS = [
-  ["baselineWindowS", "Baseline window (s)"],
-  ["coWindowS", <>C<sub>0</sub> window (s)</>],
-  ["equilibriumBandPercent", "Equilibrium band (%)"],
-  ["equilibriumDurationS", "Equilibrium duration (s)"],
-  ["conversionScale", "Conversion scale (ppm)"],
-  ["conversionExponent", "Conversion exponent"],
-  ["retentionDays", "Data retention (days)"],
+const NUMBER_KEYS = [
+  "baselineWindowS",
+  "coWindowS",
+  "equilibriumBandPercent",
+  "equilibriumDurationS",
+  "conversionScale",
+  "conversionExponent",
+  "retentionDays",
 ] as const
 
-type NumberKey = (typeof NUMBER_FIELDS)[number][0]
+type NumberKey = (typeof NUMBER_KEYS)[number]
 
 export function SettingsDialog({
   settings,
@@ -36,17 +35,27 @@ export function SettingsDialog({
   const [pattern, setPattern] = useState(settings.fileNamePattern)
   const [ports, setPorts] = useState(settings.extraPorts.join(", "))
   const [numbers, setNumbers] = useState<Record<NumberKey, string>>(
-    () => Object.fromEntries(NUMBER_FIELDS.map(([key]) => [key, String(settings[key])])) as Record<NumberKey, string>,
+    () => Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(settings[key])])) as Record<NumberKey, string>,
   )
 
   useEffect(() => {
     void api.defaultFolder().then(setDefaultFolder)
   }, [])
 
-  const invalid = new Set(
-    NUMBER_FIELDS.filter(([key]) => !(parseNumber(numbers[key]) > 0)).map(([key]) => key as string),
-  )
+  const invalid = new Set<string>(NUMBER_KEYS.filter((key) => !(parseNumber(numbers[key]) > 0)))
   if (!pattern.trim()) invalid.add("pattern")
+
+  const numberRow = (key: NumberKey, label: React.ReactNode, unit?: string) => (
+    <FormRow key={key} label={label} id={key} invalid={invalid.has(key)}>
+      <NumberInput
+        id={key}
+        value={numbers[key]}
+        unit={unit}
+        invalid={invalid.has(key)}
+        onChange={(value) => setNumbers((current) => ({ ...current, [key]: value }))}
+      />
+    </FormRow>
+  )
 
   async function browse() {
     const selected = await openDialog({ directory: true, defaultPath: folder || defaultFolder })
@@ -56,7 +65,7 @@ export function SettingsDialog({
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (invalid.size > 0) return
-    const parsed = Object.fromEntries(NUMBER_FIELDS.map(([key]) => [key, parseNumber(numbers[key])])) as Record<
+    const parsed = Object.fromEntries(NUMBER_KEYS.map((key) => [key, parseNumber(numbers[key])])) as Record<
       NumberKey,
       number
     >
@@ -75,68 +84,88 @@ export function SettingsDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-xl">
-        <form onSubmit={submit} className="grid gap-5">
+      <DialogContent className="sm:max-w-[560px]">
+        <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
-            <Field label="Export folder" id="folder">
-              <div className="flex gap-2">
-                <Input
-                  id="folder"
-                  value={folder}
-                  placeholder={defaultFolder}
-                  onChange={(event) => setFolder(event.target.value)}
-                />
-                <Button type="button" variant="outline" onClick={() => void browse()}>
-                  Browse
-                </Button>
-              </div>
-            </Field>
-            <Field label="File name" id="pattern" invalid={invalid.has("pattern")}>
-              <Input
-                id="pattern"
-                value={pattern}
-                aria-invalid={invalid.has("pattern")}
-                onChange={(event) => setPattern(event.target.value)}
-              />
-            </Field>
+            <FormGroup title="Export">
+              <FormGrid columns={2}>
+                <FormRow label="Folder" id="folder" wide>
+                  <div className="flex gap-2">
+                    <Input
+                      id="folder"
+                      value={folder}
+                      placeholder={defaultFolder}
+                      autoComplete="off"
+                      onChange={(event) => setFolder(event.target.value)}
+                    />
+                    <Button type="button" variant="outline" onClick={() => void browse()}>
+                      Browse
+                    </Button>
+                  </div>
+                </FormRow>
+                <FormRow label="File name" id="pattern" invalid={invalid.has("pattern")} wide>
+                  <Input
+                    id="pattern"
+                    value={pattern}
+                    aria-invalid={invalid.has("pattern")}
+                    autoComplete="off"
+                    onChange={(event) => setPattern(event.target.value)}
+                  />
+                </FormRow>
+              </FormGrid>
+            </FormGroup>
+            <FormGroup title="Calculation">
+              <FormGrid columns={2}>
+                {numberRow("baselineWindowS", "Baseline window", "s")}
+                {numberRow(
+                  "coWindowS",
+                  <>
+                    C<sub>0</sub> window
+                  </>,
+                  "s",
+                )}
+              </FormGrid>
+            </FormGroup>
+            <FormGroup title="Equilibrium">
+              <FormGrid columns={2}>
+                {numberRow("equilibriumBandPercent", "Band", "%")}
+                {numberRow("equilibriumDurationS", "Duration", "s")}
+              </FormGrid>
+            </FormGroup>
+            <FormGroup title="Conversion">
+              <FormGrid columns={2}>
+                {numberRow("conversionScale", "Scale", "ppm")}
+                {numberRow("conversionExponent", "Exponent")}
+                <FormRow wide>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setNumbers((current) => ({
+                        ...current,
+                        conversionScale: String(VENDOR_SCALE),
+                        conversionExponent: String(VENDOR_EXPONENT),
+                      }))
+                    }
+                  >
+                    Reset conversion
+                  </Button>
+                </FormRow>
+              </FormGrid>
+            </FormGroup>
+            <FormGroup title="Data">
+              <FormGrid columns={2}>
+                {numberRow("retentionDays", "Retention", "days")}
+                <div className="col-span-2" />
+                <FormRow label="Additional ports" id="ports" wide>
+                  <Input id="ports" value={ports} autoComplete="off" onChange={(event) => setPorts(event.target.value)} />
+                </FormRow>
+              </FormGrid>
+            </FormGroup>
           </div>
-          <Separator />
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            {NUMBER_FIELDS.map(([key, label]) => (
-              <Field key={key} label={label} id={key} invalid={invalid.has(key)}>
-                <Input
-                  id={key}
-                  inputMode="decimal"
-                  value={numbers[key]}
-                  aria-invalid={invalid.has(key)}
-                  onChange={(event) => setNumbers((current) => ({ ...current, [key]: event.target.value }))}
-                />
-              </Field>
-            ))}
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() =>
-                  setNumbers((current) => ({
-                    ...current,
-                    conversionScale: String(VENDOR_SCALE),
-                    conversionExponent: String(VENDOR_EXPONENT),
-                  }))
-                }
-              >
-                Reset conversion
-              </Button>
-            </div>
-          </div>
-          <Separator />
-          <Field label="Additional ports" id="ports">
-            <Input id="ports" value={ports} onChange={(event) => setPorts(event.target.value)} />
-          </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
