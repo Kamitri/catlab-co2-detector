@@ -4,7 +4,7 @@ import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
 import type { RunParameters } from "@/lib/api"
 import { toFormValues } from "@/lib/runForm"
 import { stepValue } from "@/lib/step"
-import { timeAxisEnd } from "@/lib/view"
+import { timeAxisEnd, timeTicks } from "@/lib/view"
 
 const options = { bandPercent: 3, windowS: 300, delayS: 0 }
 
@@ -75,5 +75,15 @@ describe("toFormValues", () => {
     expect(values.massG).toBe("0.4990")
     expect(values.soapVolumeMl).toBe("5.0")
     expect(values.soapTimesS[0]).toBe("2.67")
+  })
+})
+
+describe("timeTicks", () => {
+  it("labels every 500 s with grid every 100 s in default view", () => {
+    expect(timeTicks(5000)).toEqual({ label: 500, grid: 100 })
+    expect(timeTicks(7000)).toEqual({ label: 500, grid: 100 })
+    expect(timeTicks(1000)).toEqual({ label: 100, grid: 20 })
+    expect(timeTicks(3000)).toEqual({ label: 200, grid: 50 })
+    expect(timeTicks(20000)).toEqual({ label: 2000, grid: 500 })
   })
 })

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { useDarkMode } from "@/hooks/useTheme"
 import { CHART_FONT, chartPalette } from "@/lib/theme"
-import type { View } from "@/lib/view"
+import { timeTicks, type View } from "@/lib/view"
 
 export interface ChartTrace {
   name: string
@@ -113,10 +113,16 @@ export function Chart({
     if (clockStart !== undefined) {
       data.push({ type: "scatter", x: [], y: [], xaxis: "x2", hoverinfo: "skip", showlegend: false })
     }
+    const ticks = timeTicks(view.x[1] - view.x[0])
     const axis = {
       gridcolor: palette.grid,
-      zeroline: false,
+      // Line at 0 stands out from grid lines
+      zeroline: true,
+      zerolinecolor: palette.zero,
+      zerolinewidth: 2,
       linecolor: palette.grid,
+      // Axis line at plot edge would hide zero line at same position
+      showline: false,
       tickcolor: palette.grid,
       tickfont: { color: palette.muted, size: 11 },
       automargin: true,
@@ -192,6 +198,9 @@ export function Chart({
         type: "linear",
         range: [...view.x],
         title: { text: xTitle, font: { size: 12, color: palette.muted } },
+        tick0: 0,
+        dtick: ticks.label,
+        minor: { dtick: ticks.grid, showgrid: true, gridcolor: palette.minorGrid },
         hoverformat: ",.0f",
         tickformat: ",~r",
       },
