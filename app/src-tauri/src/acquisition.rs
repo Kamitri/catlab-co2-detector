@@ -1,4 +1,4 @@
-//! Serial acquisition loop: finds detector on any serial port, polls once per second,
+//! Serial acquisition loop: finds detector on any serial port, polls once per second (see Timing),
 //! reconnects after disconnection. Runs on separate thread, independent of UI.
 
 use std::io::ErrorKind;
@@ -14,13 +14,60 @@ use crate::model::Connection;
 use crate::protocol::{FrameError, REQUEST, find_reply};
 
 pub const BAUD_RATE: u32 = 19200;
-pub const POLL_INTERVAL: Duration = Duration::from_secs(1);
-const SCAN_INTERVAL: Duration = Duration::from_secs(2);
-const REPLY_TIMEOUT: Duration = Duration::from_millis(500);
-/// Searching time before "Detector not found" message.
-const NOT_FOUND_DELAY: Duration = Duration::from_secs(10);
+/// Polls per port during scan. Some USB serial adapters lose first frame after port opens.
+const PROBE_ATTEMPTS: u32 = 3;
 /// Consecutive missing replies before port is treated as disconnected.
 const MAX_MISSED_REPLIES: u32 = 3;
+/// Read timeout of serial port; poll() repeats reads until reply timeout.
+const READ_TIMEOUT: Duration = Duration::from_millis(10);
+
+/// Timing of acquisition loop. Default is timing of detector; tests use shorter intervals.
+#[derive(Debug, Clone, Copy)]
+pub struct Timing {
+    pub poll_interval: Duration,
+    pub scan_interval: Duration,
+    pub reply_timeout: Duration,
+    /// Wait after opening port before first poll, for adapter to apply line settings.
+    pub open_settle: Duration,
+    /// Searching time before "Detector not found" message.
+    pub not_found_delay: Duration,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            poll_interval: Duration::from_secs(1),
+            scan_interval: Duration::from_secs(2),
+            reply_timeout: Duration::from_millis(900),
+            open_settle: Duration::from_millis(200),
+            not_found_delay: Duration::from_secs(10),
+        }
+    }
+}
+
+impl Timing {
+    /// Timing scaled to poll interval, for simulator and tests.
+    pub fn fast(poll_interval: Duration) -> Self {
+        Self {
+            poll_interval,
+            scan_interval: poll_interval * 2,
+            reply_timeout: (poll_interval * 4).min(Duration::from_millis(900)),
+            open_settle: poll_interval / 2,
+            not_found_delay: poll_interval * 15,
+        }
+    }
+
+    /// Fast timing from CO2_POLL_INTERVAL_MS, for end-to-end test; variable has effect in debug builds only.
+    pub fn from_environment() -> Self {
+        let interval = std::env::var("CO2_POLL_INTERVAL_MS").ok().and_then(|value| value.parse::<u64>().ok());
+        match interval {
+            Some(milliseconds) if cfg!(debug_assertions) && milliseconds > 0 => {
+                Self::fast(Duration::from_millis(milliseconds))
+            }
+            _ => Self::default(),
+        }
+    }
+}
 
 pub trait Sink: Send + Sync + 'static {
     fn measurement(&self, timestamp: i64, count: u32);
@@ -47,21 +94,21 @@ fn open(name: &str) -> serialport::Result<Box<dyn SerialPort>> {
         .stop_bits(StopBits::One)
         .parity(Parity::None)
         .flow_control(FlowControl::None)
-        .timeout(Duration::from_millis(50))
+        .timeout(READ_TIMEOUT)
         .open()
 }
 
-fn poll(port: &mut dyn SerialPort) -> Result<u32, PollError> {
+fn poll(port: &mut dyn SerialPort, reply_timeout: Duration) -> Result<u32, PollError> {
     port.clear(ClearBuffer::Input).map_err(|_| PollError::Port)?;
     port.write_all(&REQUEST).map_err(|_| PollError::Port)?;
     port.flush().map_err(|_| PollError::Port)?;
-    let deadline = Instant::now() + REPLY_TIMEOUT;
+    let deadline = Instant::now() + reply_timeout;
     let mut buffer = Vec::with_capacity(32);
     let mut chunk = [0u8; 32];
     let mut last_error = None;
     while Instant::now() < deadline {
         match port.read(&mut chunk) {
-            Ok(0) => thread::sleep(Duration::from_millis(10)),
+            Ok(0) => thread::sleep(READ_TIMEOUT),
             Ok(length) => {
                 buffer.extend_from_slice(&chunk[..length]);
                 match find_reply(&buffer) {
@@ -95,15 +142,44 @@ fn candidate_ports(extra: Vec<String>, preferred: Option<&str>) -> Vec<String> {
     ports
 }
 
+/// Port found by scan, with first count N.
+type Found = (String, Box<dyn SerialPort>, u32);
+
+/// Describes why port could not be opened.
+fn open_failure(error: &serialport::Error) -> &'static str {
+    let description = error.description.to_lowercase();
+    // Windows reports port opened by another program as "Access is denied", Linux as "busy"
+    if description.contains("denied") || description.contains("busy") { "in use" } else { "cannot open" }
+}
+
 /// Opens each candidate port and returns first port that replies with valid frame.
-fn scan(sink: &dyn Sink, preferred: Option<&str>) -> Option<(String, Box<dyn SerialPort>, u32)> {
+/// Without detector, returns result of each port, for example "COM3: in use".
+fn scan(sink: &dyn Sink, preferred: Option<&str>, timing: &Timing, stop: &AtomicBool) -> Result<Found, Vec<String>> {
+    let mut results = Vec::new();
     for name in candidate_ports(sink.extra_ports(), preferred) {
-        let Ok(mut port) = open(&name) else { continue };
-        if let Ok(count) = poll(port.as_mut()) {
-            return Some((name, port, count));
+        let mut port = match open(&name) {
+            Ok(port) => port,
+            Err(error) => {
+                results.push(format!("{name}: {}", open_failure(&error)));
+                continue;
+            }
+        };
+        sleep_until(Instant::now() + timing.open_settle, stop);
+        let mut invalid = false;
+        for _ in 0..PROBE_ATTEMPTS {
+            match poll(port.as_mut(), timing.reply_timeout) {
+                Ok(count) => return Ok((name, port, count)),
+                Err(PollError::Invalid) => invalid = true,
+                Err(PollError::NoReply) => {}
+                Err(PollError::Port) => break,
+            }
+            if stop.load(Ordering::Relaxed) {
+                return Err(results);
+            }
         }
+        results.push(format!("{name}: {}", if invalid { "invalid reply" } else { "no reply" }));
     }
-    None
+    Err(results)
 }
 
 fn sleep_until(deadline: Instant, stop: &AtomicBool) {
@@ -112,44 +188,46 @@ fn sleep_until(deadline: Instant, stop: &AtomicBool) {
         if now >= deadline {
             return;
         }
-        thread::sleep((deadline - now).min(Duration::from_millis(100)));
+        thread::sleep((deadline - now).min(Duration::from_millis(50)));
     }
 }
 
 /// Starts acquisition thread. A panic inside loop restarts loop instead of ending acquisition.
-pub fn spawn(sink: Arc<dyn Sink>, stop: Arc<AtomicBool>) -> JoinHandle<()> {
+pub fn spawn(sink: Arc<dyn Sink>, timing: Timing, stop: Arc<AtomicBool>) -> JoinHandle<()> {
     thread::spawn(move || {
         while !stop.load(Ordering::Relaxed) {
-            let result = panic::catch_unwind(AssertUnwindSafe(|| run_loop(sink.as_ref(), &stop)));
+            let result = panic::catch_unwind(AssertUnwindSafe(|| run_loop(sink.as_ref(), &timing, &stop)));
             if result.is_err() {
                 sink.message("error", "Acquisition restarted after internal error");
-                sleep_until(Instant::now() + SCAN_INTERVAL, &stop);
+                sleep_until(Instant::now() + timing.scan_interval, &stop);
             }
         }
     })
 }
 
-fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
+fn run_loop(sink: &dyn Sink, timing: &Timing, stop: &AtomicBool) {
     let mut last_port: Option<String> = None;
     let mut searching_announced = false;
     let mut search_started = Instant::now();
-    let mut not_found_reported = false;
+    let mut last_report = String::new();
     while !stop.load(Ordering::Relaxed) {
         if !searching_announced {
             sink.connection(Connection::Searching);
             searching_announced = true;
             search_started = Instant::now();
-            not_found_reported = false;
+            last_report.clear();
         }
         let scan_started = Instant::now();
-        let (name, mut port, count) = match scan(sink, last_port.as_deref()) {
-            Some(found) => found,
-            None => {
-                if !not_found_reported && search_started.elapsed() >= NOT_FOUND_DELAY {
-                    sink.message("warning", "Detector not found");
-                    not_found_reported = true;
+        let (name, mut port, count) = match scan(sink, last_port.as_deref(), timing, stop) {
+            Ok(found) => found,
+            Err(results) => {
+                // Reported after delay, and again only when result of a port changes
+                let report = if results.is_empty() { "no serial ports".to_string() } else { results.join("; ") };
+                if search_started.elapsed() >= timing.not_found_delay && report != last_report {
+                    sink.message("warning", &format!("Detector not found ({report})"));
+                    last_report = report;
                 }
-                sleep_until(scan_started + SCAN_INTERVAL, stop);
+                sleep_until(scan_started + timing.scan_interval, stop);
                 continue;
             }
         };
@@ -159,7 +237,7 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
         sink.measurement(now_ms(), count);
         last_port = Some(name.clone());
 
-        let mut next_poll = Instant::now() + POLL_INTERVAL;
+        let mut next_poll = Instant::now() + timing.poll_interval;
         let mut missed = 0;
         let mut invalid_frames = 0u32;
         loop {
@@ -167,11 +245,11 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
             if stop.load(Ordering::Relaxed) {
                 return;
             }
-            next_poll += POLL_INTERVAL;
+            next_poll += timing.poll_interval;
             if next_poll < Instant::now() {
-                next_poll = Instant::now() + POLL_INTERVAL;
+                next_poll = Instant::now() + timing.poll_interval;
             }
-            match poll(port.as_mut()) {
+            match poll(port.as_mut(), timing.reply_timeout) {
                 Ok(count) => {
                     missed = 0;
                     sink.measurement(now_ms(), count);
@@ -196,5 +274,21 @@ fn run_loop(sink: &dyn Sink, stop: &AtomicBool) {
             }
         }
         drop(port);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_open_errors() {
+        let denied = serialport::Error::new(serialport::ErrorKind::NoDevice, "Access is denied.");
+        assert_eq!(open_failure(&denied), "in use");
+        let busy = serialport::Error::new(serialport::ErrorKind::Unknown, "Device or resource busy");
+        assert_eq!(open_failure(&busy), "in use");
+        let missing =
+            serialport::Error::new(serialport::ErrorKind::NoDevice, "The system cannot find the file specified.");
+        assert_eq!(open_failure(&missing), "cannot open");
     }
 }

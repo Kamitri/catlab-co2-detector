@@ -86,8 +86,7 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
           {lastRun.exportPath && (
             <Button
               variant="outline"
-              size="sm"
-              className="mt-1 w-full"
+                className="mt-1 w-full"
               onClick={() => void revealItemInDir(lastRun.exportPath!)}
             >
               Show in folder

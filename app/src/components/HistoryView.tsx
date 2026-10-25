@@ -92,21 +92,20 @@ function RunDetail({
   return (
     <ScrollArea className="h-full">
       <div className="space-y-4 p-4">
-        <RunFields form={form} blankRuns={blankRuns} showDelay showValidation />
+        <RunFields form={form} blankRuns={blankRuns} showDelay showValidation columns={1} />
         <div className="flex gap-2">
-          <Button size="sm" disabled={!dirty || form.errors.size > 0} onClick={() => void save()}>
+          <Button disabled={!dirty || form.errors.size > 0} onClick={() => void save()}>
             Save
           </Button>
-          <Button size="sm" variant="outline" disabled={busy || run.status === "running"} onClick={() => void exportRun()}>
+          <Button variant="outline" disabled={busy || run.status === "running"} onClick={() => void exportRun()}>
             Export
           </Button>
           {run.exportPath && (
-            <Button size="sm" variant="outline" onClick={() => void revealItemInDir(run.exportPath!)}>
+            <Button variant="outline" onClick={() => void revealItemInDir(run.exportPath!)}>
               Show in folder
             </Button>
           )}
           <Button
-            size="sm"
             variant="destructive"
             className="ml-auto"
             disabled={run.status === "running"}
@@ -224,7 +223,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="max-h-[38%] min-h-32 shrink-0 overflow-auto border-b">
         <Table>
-          <TableHeader className="sticky top-0 bg-background">
+          <TableHeader className="sticky top-0 bg-sidebar">
             <TableRow>
               <TableHead className="w-10" />
               <TableHead>Start</TableHead>

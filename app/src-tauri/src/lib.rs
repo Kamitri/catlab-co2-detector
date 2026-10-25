@@ -466,7 +466,7 @@ pub fn run() {
             app.manage(state);
 
             let sink = Arc::new(TauriSink { app: app.handle().clone(), database, connection });
-            acquisition::spawn(sink, Arc::new(AtomicBool::new(false)));
+            acquisition::spawn(sink, acquisition::Timing::from_environment(), Arc::new(AtomicBool::new(false)));
             Ok(())
         })
         .on_window_event(|window, event| {

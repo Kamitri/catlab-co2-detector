@@ -23,14 +23,14 @@ export function ChartControls({
             key={mode}
             size="sm"
             variant={dragMode === mode ? "secondary" : "ghost"}
-            className="h-6 px-2.5"
+            className="px-2.5"
             onClick={() => onDragModeChange(mode)}
           >
             {mode === "zoom" ? "Zoom" : "Pan"}
           </Button>
         ))}
       </div>
-      <Button size="sm" variant="outline" onClick={onReset}>
+      <Button variant="outline" onClick={onReset}>
         Reset view
       </Button>
     </div>
@@ -80,22 +80,22 @@ export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAb
         <div className="flex items-center gap-2">
           {activeRun ? (
             <>
-              <Button size="sm" variant={valveOpened ? "outline" : "default"} onClick={onValveOpen}>
+              <Button variant={valveOpened ? "outline" : "default"} onClick={onValveOpen}>
                 Valve open
               </Button>
-              <Button size="sm" variant="outline" onClick={onMarker}>
+              <Button variant="outline" onClick={onMarker}>
                 Add marker
               </Button>
               <div className="mx-1 h-5 w-px bg-border" />
-              <Button size="sm" onClick={onFinish}>
+              <Button onClick={onFinish}>
                 Finish
               </Button>
-              <Button size="sm" variant="destructive" onClick={onAbort}>
+              <Button variant="destructive" onClick={onAbort}>
                 Abort
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={onStart} disabled={!state.ready}>
+            <Button onClick={onStart} disabled={!state.ready}>
               Start
             </Button>
           )}

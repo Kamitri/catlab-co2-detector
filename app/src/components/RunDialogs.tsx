@@ -1,6 +1,7 @@
 import { useState } from "react"
 
-import { Field, RunFields } from "@/components/RunForm"
+import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayout"
+import { RunFields } from "@/components/RunForm"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,8 +49,8 @@ export function StartDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-xl">
-        <form onSubmit={submit} className="grid gap-5">
+      <DialogContent className="sm:max-w-[560px]">
+        <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Start run</DialogTitle>
           </DialogHeader>
@@ -104,32 +105,36 @@ export function FinishDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={submit} className="grid gap-5">
+      <DialogContent className="sm:max-w-sm">
+        <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Finish run</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-5 gap-2">
-            {measurements.map((text, index) => (
-              <Field key={index} label={`Flow ${index + 1}`} id={`flow-${index}`} invalid={invalid[index]}>
-                <Input
-                  id={`flow-${index}`}
-                  inputMode="decimal"
-                  value={text}
-                  aria-invalid={invalid[index]}
-                  autoFocus={index === 0}
-                  onChange={(event) =>
-                    setMeasurements((list) => list.map((item, position) => (position === index ? event.target.value : item)))
-                  }
-                />
-              </Field>
-            ))}
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Flow rate (mL/min)</span>
-            <span className="tabular-nums">
-              {average !== null ? formatNumber(average) : formatNumber(run.parameters.flowRateMlMin)}
-            </span>
+          <div>
+            <FormGroup title="Flow rate">
+              <FormGrid>
+                {measurements.map((text, index) => (
+                  <FormRow key={index} label={`Measurement ${index + 1}`} id={`flow-${index}`} invalid={invalid[index]}>
+                    <NumberInput
+                      id={`flow-${index}`}
+                      value={text}
+                      unit="mL/min"
+                      invalid={invalid[index]}
+                      autoFocus={index === 0}
+                      onChange={(value) =>
+                        setMeasurements((list) => list.map((item, position) => (position === index ? value : item)))
+                      }
+                    />
+                  </FormRow>
+                ))}
+                <FormRow label="Mean">
+                  <div className="flex h-7 items-center justify-end px-2 font-medium tabular-nums">
+                    {average !== null ? formatNumber(average) : formatNumber(run.parameters.flowRateMlMin)}
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">mL/min</span>
+                  </div>
+                </FormRow>
+              </FormGrid>
+            </FormGroup>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancel}>
@@ -151,7 +156,7 @@ export function MarkerDialog({ onCancel, onAdd }: { onCancel: () => void; onAdd:
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="sm:max-w-sm">
         <form
-          className="grid gap-5"
+          className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             if (label.trim()) onAdd(label.trim())
@@ -160,9 +165,17 @@ export function MarkerDialog({ onCancel, onAdd }: { onCancel: () => void; onAdd:
           <DialogHeader>
             <DialogTitle>Add marker</DialogTitle>
           </DialogHeader>
-          <Field label="Label" id="marker-label">
-            <Input id="marker-label" value={label} autoFocus onChange={(event) => setLabel(event.target.value)} />
-          </Field>
+          <FormGrid>
+            <FormRow label="Label" id="marker-label">
+              <Input
+                id="marker-label"
+                value={label}
+                autoFocus
+                autoComplete="off"
+                onChange={(event) => setLabel(event.target.value)}
+              />
+            </FormRow>
+          </FormGrid>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
