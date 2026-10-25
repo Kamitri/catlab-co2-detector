@@ -2,7 +2,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { Chart, type ChartTrace, type DragMode } from "@/components/Chart"
-import { ChartControls } from "@/components/LiveView"
+import { ChartControls } from "@/components/ChartControls"
 import { ConfirmDialog } from "@/components/RunDialogs"
 import { RunFields } from "@/components/RunForm"
 import { Badge } from "@/components/ui/badge"
@@ -11,12 +11,14 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useChartView } from "@/hooks/useChartView"
 import { useRunForm } from "@/hooks/useRunForm"
 import { api, type Marker, type Measurements, type Run, type RunResult } from "@/lib/api"
 import { GAP_THRESHOLD_MS, runSeries, withGaps } from "@/lib/data"
 import { formatDateTime, formatDuration, formatInteger, formatNumber } from "@/lib/format"
 import { toParameters } from "@/lib/runForm"
 import { CHART_COLORS } from "@/lib/theme"
+import { DEFAULT_CO2_RANGE, DEFAULT_RATIO_RANGE, defaultView } from "@/lib/view"
 import { cn } from "@/lib/utils"
 
 const STATUS_LABELS = { running: "Running", finished: "Finished", aborted: "Aborted" }
@@ -146,7 +148,6 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [focused, setFocused] = useState<number | null>(null)
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
-  const [resetCount, setResetCount] = useState(0)
 
   const load = useCallback(async () => {
     const list = await api.listRuns()
@@ -185,27 +186,44 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
           const series = runSeries(run, data[run.id].measurements)
           const result = results[run.id]
           if (!overlay) {
-            const minutes = series.x.map((seconds) => seconds / 60)
-            return { name: run.parameters.sample, color: CHART_COLORS[0], ...withGaps(minutes, series.y, GAP_THRESHOLD_MS / 60_000) }
+            return {
+              name: run.parameters.sample,
+              color: CHART_COLORS[0],
+              hovertemplate: "%{y:,.0f} ppm<extra></extra>",
+              ...withGaps(series.x, series.y, GAP_THRESHOLD_MS / 1000),
+            }
           }
           const baseline = result?.baselinePpm ?? 0
           const inlet = result?.coPpm ?? 1
-          const minutes = series.x.map((seconds) => (seconds - run.parameters.delayS) / 60)
+          const afterDelay = series.x.map((seconds) => seconds - run.parameters.delayS)
           const ratio = series.y.map((value) => (value - baseline) / inlet)
           return {
             name: run.parameters.sample,
             color: CHART_COLORS[index % CHART_COLORS.length],
-            ...withGaps(minutes, ratio, GAP_THRESHOLD_MS / 60_000),
+            hovertemplate: "%{y:.3f}<extra>%{fullData.name}</extra>",
+            ...withGaps(afterDelay, ratio, GAP_THRESHOLD_MS / 1000),
           }
         }),
     [shown, data, results, overlay],
+  )
+
+  const lastTime = Math.max(
+    0,
+    ...traces.map((trace) => {
+      const times = trace.x.filter((value): value is number => value !== null)
+      return times.length > 0 ? times[times.length - 1] : 0
+    }),
+  )
+  const chartView = useChartView(
+    defaultView(lastTime, overlay ? DEFAULT_RATIO_RANGE : DEFAULT_CO2_RANGE),
+    shown.map((run) => run.id).join(","),
   )
 
   const focusedRun = runs.find((run) => run.id === focused) ?? null
   const markers =
     !overlay && shown[0] && data[shown[0].id]
       ? data[shown[0].id].markers.map((marker) => ({
-          x: (marker.timestamp - shown[0].startedAt) / 60_000,
+          x: (marker.timestamp - shown[0].startedAt) / 1000,
           label: marker.label,
         }))
       : []
@@ -267,17 +285,35 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center justify-end border-b px-4 py-2.5">
-            <ChartControls dragMode={dragMode} onDragModeChange={setDragMode} onReset={() => setResetCount((count) => count + 1)} />
+            <ChartControls
+              dragMode={dragMode}
+              onDragModeChange={setDragMode}
+              view={chartView.view}
+              onViewChange={chartView.setView}
+              onReset={chartView.reset}
+              yLabel={
+                overlay ? (
+                  <>
+                    C/C<sub>0</sub>
+                  </>
+                ) : (
+                  <>
+                    CO<sub>2</sub>
+                  </>
+                )
+              }
+              yUnit={overlay ? undefined : "ppm"}
+            />
           </div>
           <div className="min-h-0 flex-1 p-2">
             <Chart
               traces={traces}
-              xType="linear"
-              xTitle={overlay ? "Time after delay (min)" : "Time (min)"}
+              xTitle={overlay ? "Time after delay (s)" : "Time (s)"}
               yTitle={overlay ? "C/C<sub>0</sub>" : "CO<sub>2</sub> (ppm)"}
               markers={markers}
               revision={traces.length}
-              viewKey={`${shown.map((run) => run.id).join(",")}-${resetCount}`}
+              view={chartView.view}
+              onViewChange={chartView.setView}
               dragMode={dragMode}
               showLegend={overlay}
             />

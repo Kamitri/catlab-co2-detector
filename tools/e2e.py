@@ -14,6 +14,9 @@ from typing import Annotated
 import typer
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
+from selenium.webdriver.common.actions.mouse_button import MouseButton
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from Xlib import X, display, protocol
@@ -97,6 +100,14 @@ def measurement_count(work: Path) -> int:
         return connection.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
 
 
+def axis_ranges(driver: webdriver.Remote) -> list[list[float]]:
+    """Return rounded x and y axis ranges of chart."""
+    ranges = driver.execute_script(
+        "const plot = document.querySelector('.js-plotly-plot'); return [plot.layout.xaxis.range, plot.layout.yaxis.range]"
+    )
+    return [[round(value, 1) for value in axis] for axis in ranges]
+
+
 def port_open(port: int) -> bool:
     """Return whether local TCP port accepts connections."""
     with socket.socket() as connection:
@@ -143,7 +154,7 @@ def main(
         driver = session()
         driver.set_window_size(1440, 900)
         wait_text(driver, "Connected to")
-        wait_until(lambda: co2_value(driver) > 0, message="No measurement shown")
+        wait_until(lambda: co2_value(driver) > 0, message="Measurement not shown")
         shot(driver, "01-monitor")
 
         button(driver, "Settings").click()
@@ -225,6 +236,42 @@ def main(
         driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Abort']").click()
         wait_text(driver, "Exported", count=2)
         shot(driver, "11-aborted")
+
+        # Chart view checks run last: after WebDriver pointer actions, WebKit WebDriver drops Shift in typing
+        # Default view: fixed axes that do not follow each new measurement
+        default = [[0, 5000], [0, 40000]]
+        assert axis_ranges(driver) == default, axis_ranges(driver)
+        count = measurement_count(work)
+        wait_until(lambda: measurement_count(work) >= count + 20, 10, "Measurements stopped")
+        assert axis_ranges(driver) == default, axis_ranges(driver)
+
+        # Axes tool sets exact ranges
+        button(driver, "Axes").click()
+        fill(driver, "axes-xTo", "1000")
+        fill(driver, "axes-yTo", "10000")
+        shot(driver, "01b-axes")
+        button(driver, "Apply").click()
+        wait_until(lambda: axis_ranges(driver) == [[0, 1000], [0, 10000]], 5, "Axes not applied")
+
+        # Space with drag pans while Zoom tool stays selected. Key events come from script: WebDriver key
+        # actions leave keyboard state that drops Shift in later typing
+        plot = driver.find_element(By.CSS_SELECTOR, ".js-plotly-plot .nsewdrag")
+        space = "window.dispatchEvent(new KeyboardEvent(arguments[0], {code: 'Space', key: ' ', bubbles: true}))"
+        driver.execute_script(space, "keydown")
+        ActionChains(driver).click_and_hold(plot).move_by_offset(-150, 0).release().perform()
+        driver.execute_script(space, "keyup")
+        wait_until(lambda: axis_ranges(driver)[0][0] > 0, 5, "Space drag did not pan")
+
+        # Middle button drag pans
+        before = axis_ranges(driver)[0][0]
+        action = ActionBuilder(driver)
+        action.pointer_action.move_to(plot).pointer_down(MouseButton.MIDDLE).move_by(-150, 0).pointer_up(MouseButton.MIDDLE)
+        action.perform()
+        wait_until(lambda: axis_ranges(driver)[0][0] > before, 5, "Middle button drag did not pan")
+        assert not driver.find_elements(By.CSS_SELECTOR, ".notifier-note"), "Plotly tip shown"
+        button(driver, "Reset view").click()
+        wait_until(lambda: axis_ranges(driver) == default, 5, "Reset view did not restore default view")
+        print("Chart view: default, Axes, Space pan, middle button pan, Reset view")
         driver.quit()
     finally:
         for process in reversed(processes):

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
-import { plotlyLocalTime } from "@/lib/format"
 import { stepValue } from "@/lib/step"
+import { timeAxisEnd } from "@/lib/view"
 
 const options = { bandPercent: 3, durationS: 600, baselineWindowS: 60, delayS: 0 }
 
@@ -46,13 +46,6 @@ describe("detectEquilibrium", () => {
   })
 })
 
-describe("plotlyLocalTime", () => {
-  it("uses local time", () => {
-    const timestamp = new Date(2026, 9, 24, 7, 5, 3, 9).getTime()
-    expect(plotlyLocalTime(timestamp)).toBe("2026-10-24 07:05:03.009")
-  })
-})
-
 describe("stepValue", () => {
   it("steps by last decimal place", () => {
     expect(stepValue("0.56", 1)).toBe("0.57")
@@ -60,5 +53,16 @@ describe("stepValue", () => {
     expect(stepValue("1,5", 1)).toBe("1.6")
     expect(stepValue("30.0", 1, 10)).toBe("31.0")
     expect(stepValue("", 1)).toBe("")
+  })
+})
+
+describe("timeAxisEnd", () => {
+  it("starts at 5000 s and grows by 1000 s near end", () => {
+    expect(timeAxisEnd(0)).toBe(5000)
+    expect(timeAxisEnd(3999)).toBe(5000)
+    expect(timeAxisEnd(4000)).toBe(6000)
+    expect(timeAxisEnd(4999)).toBe(6000)
+    expect(timeAxisEnd(5000)).toBe(7000)
+    expect(timeAxisEnd(Number.NaN)).toBe(5000)
   })
 })
