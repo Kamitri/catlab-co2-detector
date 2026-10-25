@@ -12,7 +12,7 @@ import icon from "@/assets/icon.png"
 import { useMonitor } from "@/hooks/useMonitor"
 import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
 
-type DialogState = "start" | "finish" | "marker" | "abort" | "settings" | "exit" | null
+type DialogState = "start" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | null
 type View = "live" | "history" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
@@ -37,7 +37,7 @@ function startDefaults(previous: Run | undefined, settings: Settings): RunParame
 }
 
 export default function App() {
-  const { state, setSettings, dismissRecovery, applyRun } = useMonitor()
+  const { state, setSettings, dismissRecovery, applyRun, clearChart } = useMonitor()
   const [view, setView] = useState<View>("live")
   const [dialog, setDialog] = useState<DialogState>(null)
   const [runs, setRuns] = useState<Run[]>([])
@@ -103,6 +103,7 @@ export default function App() {
               onMarker={() => setDialog("marker")}
               onFinish={() => setDialog("finish")}
               onAbort={() => setDialog("abort")}
+              onClear={() => setDialog("clear")}
             />
           ) : view === "history" ? (
             <HistoryView refreshKey={`${state.activeRun?.id}-${state.lastRun?.id}-${state.lastRun?.exportPath}`} />
@@ -161,6 +162,19 @@ export default function App() {
             setDialog(null)
             const run = await handle(() => api.abortRun(activeRun.id))
             if (run) await applyRun(run)
+          }}
+        />
+      )}
+      {dialog === "clear" && !activeRun && (
+        <ConfirmDialog
+          title="Are you sure?"
+          description="This action will delete ALL your current chart data. This action is irreversible."
+          action="Clear chart"
+          destructive
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            void handle(clearChart)
           }}
         />
       )}

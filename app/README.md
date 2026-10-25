@@ -16,6 +16,8 @@ The serial protocol and the conversion formula are documented in [`docs/protocol
 - The application scans all serial ports every 2 s and connects to the first port that replies to the poll request with a valid frame. After a disconnection it scans again.
 - Every measurement is written to SQLite as it arrives (`co2-monitor.db` in the application data folder). Measurements outside a run are kept for the retention period in Settings (30 days by default).
 - A run is a time interval over the stored measurements. A run that was in progress when the application closed is reopened on the next start.
+- Clear chart (outside a run) deletes the measurements on the live chart from the database, except measurements of runs. The chart then starts again at 0 s.
+- Charts show time in seconds on the bottom axis and clock time on the top axis. The chart of several runs in History shows seconds only.
 - Finish and Abort export the run to an xlsx file in the export folder. An existing file is never overwritten.
 - The workbook has live formulas. `src-tauri/src/calculation.rs` uses the same method, and `src-tauri/examples/export_check.rs` checks that both produce the same results.
 

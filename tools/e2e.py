@@ -94,10 +94,18 @@ def window_visible(title: str) -> bool:
     return bool(result.stdout.strip())
 
 
+def query_count(work: Path, sql: str) -> int:
+    """Return count from query on application database."""
+    with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
+        return connection.execute(sql).fetchone()[0]
+
+
 def measurement_count(work: Path) -> int:
     """Count stored measurements in application database."""
-    with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
-        return connection.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
+    return query_count(work, "SELECT COUNT(*) FROM measurements")
+
+
+IN_RUN = "EXISTS (SELECT 1 FROM runs WHERE timestamp >= started_at AND timestamp <= COALESCE(finished_at, timestamp))"
 
 
 def axis_ranges(driver: webdriver.Remote) -> list[list[float]]:
@@ -272,6 +280,27 @@ def main(
         button(driver, "Reset view").click()
         wait_until(lambda: axis_ranges(driver) == default, 5, "Reset view did not restore default view")
         print("Chart view: default, Axes, Space pan, middle button pan, Reset view")
+
+        # Clear chart asks first, then deletes measurements outside runs up to now
+        run_measurements = query_count(work, f"SELECT COUNT(*) FROM measurements WHERE {IN_RUN}")
+        clock_start = "return document.querySelector('.js-plotly-plot').layout.xaxis2.range[0]"
+        before = driver.execute_script(clock_start)
+        button(driver, "Clear chart").click()
+        wait_text(driver, "This action will delete ALL your current chart data. This action is irreversible.")
+        shot(driver, "12-clear")
+        driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Cancel']").click()
+        assert query_count(work, f"SELECT COUNT(*) FROM measurements WHERE NOT {IN_RUN}") > 0
+        button(driver, "Clear chart").click()
+        driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Clear chart']").click()
+        wait_text(driver, "Chart cleared")
+        cleared = query_count(work, "SELECT MAX(timestamp) FROM messages WHERE text = 'Chart cleared'")
+        remaining = query_count(work, f"SELECT COUNT(*) FROM measurements WHERE timestamp < {cleared - 1000} AND NOT {IN_RUN}")
+        assert remaining == 0, remaining
+        assert query_count(work, f"SELECT COUNT(*) FROM measurements WHERE {IN_RUN}") == run_measurements
+        # Chart starts again at time 0 = time of Clear chart
+        wait_until(lambda: driver.execute_script(clock_start) > before, 5, "Chart not cleared")
+        shot(driver, "13-cleared")
+        print("Clear chart: confirmation, measurements outside runs deleted, run measurements kept")
         driver.quit()
     finally:
         for process in reversed(processes):

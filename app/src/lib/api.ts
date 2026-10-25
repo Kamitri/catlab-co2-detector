@@ -112,6 +112,8 @@ export const api = {
   exportRun: (id: number) => invoke<string>("export_run", { id }),
   finishRun: (id: number, parameters: RunParameters) => invoke<Run>("finish_run", { id, parameters }),
   abortRun: (id: number) => invoke<Run>("abort_run", { id }),
+  /** Deletes chart measurements from `from` to now outside runs; returns end time. */
+  clearChart: (from: number) => invoke<number>("clear_chart", { from }),
   listRuns: () => invoke<Run[]>("list_runs"),
   deleteRun: (id: number) => invoke<void>("delete_run", { id }),
   logMessage: (level: MessageLevel, text: string) => invoke<void>("log_message", { level, text }),
