@@ -6,6 +6,10 @@ export interface ChartPalette {
   text: string
   muted: string
   grid: string
+  /** Grid lines between labeled grid lines. */
+  minorGrid: string
+  /** Line at 0 of each axis. */
+  zero: string
   /** Background of hover label and label of newest data point. */
   label: string
 }
@@ -15,6 +19,8 @@ const LIGHT: ChartPalette = {
   text: "#121c23",
   muted: "#5f6b74",
   grid: "#e7ecee",
+  minorGrid: "#f3f6f7",
+  zero: "#8a979f",
   label: "#ffffff",
 }
 
@@ -23,6 +29,8 @@ const DARK: ChartPalette = {
   text: "#e6eef1",
   muted: "#9aa9b2",
   grid: "#2a3a42",
+  minorGrid: "#22323a",
+  zero: "#6f8089",
   label: "#1b2a31",
 }
 
