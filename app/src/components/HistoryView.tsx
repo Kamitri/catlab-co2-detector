@@ -147,6 +147,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   const [results, setResults] = useState<Record<number, RunResult>>({})
   const [data, setData] = useState<Record<number, RunData>>({})
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [focused, setFocused] = useState<number | null>(null)
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
 
@@ -230,6 +231,21 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
       : []
 
   // Checked runs to one workbook, oldest first
+  // Newest first: blank run is deleted after runs that use it
+  async function deleteChecked() {
+    const selected = runs.filter((run) => checked.has(run.id)).sort((first, second) => second.startedAt - first.startedAt)
+    for (const run of selected) {
+      try {
+        await api.deleteRun(run.id)
+      } catch (error) {
+        await api.logMessage("error", String(error))
+      }
+    }
+    setChecked(new Set())
+    setFocused(null)
+    await load()
+  }
+
   async function exportChecked() {
     const selected = runs.filter((run) => checked.has(run.id)).sort((first, second) => first.startedAt - second.startedAt)
     const date = new Date().toLocaleDateString("en-CA")
@@ -299,13 +315,21 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-between gap-4 border-b px-4 py-2.5">
+          <div className="flex items-center gap-2 border-b px-4 py-2.5">
             <Button
               variant="outline"
               disabled={checked.size === 0 || runs.some((run) => checked.has(run.id) && run.status === "running")}
               onClick={() => void exportChecked()}
             >
               Export
+            </Button>
+            <Button
+              variant="destructive"
+              className="mr-auto"
+              disabled={checked.size === 0 || runs.some((run) => checked.has(run.id) && run.status === "running")}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete
             </Button>
             <ChartControls
               dragMode={dragMode}
@@ -363,6 +387,22 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
           </div>
         )}
       </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Are you sure?"
+          description={`This action will delete ${runs
+            .filter((run) => checked.has(run.id))
+            .map((run) => run.parameters.sample)
+            .join(", ")}. This action is irreversible.`}
+          action="Delete"
+          destructive
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false)
+            void deleteChecked()
+          }}
+        />
+      )}
     </div>
   )
 }

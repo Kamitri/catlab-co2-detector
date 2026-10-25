@@ -269,7 +269,8 @@ mod tests {
         series.concentrations[1] = 1300.0;
         assert_eq!(baseline(&series), 1000.0);
         let low = calculate(&run(parameters()), &series, 0.0);
-        let shifted = Series { concentrations: series.concentrations.iter().map(|value| value + 500.0).collect(), ..series };
+        let shifted =
+            Series { concentrations: series.concentrations.iter().map(|value| value + 500.0).collect(), ..series };
         let high = calculate(&run(parameters()), &shifted, 0.0);
         assert!((low.adsorbed_volume_l - high.adsorbed_volume_l).abs() < 1e-15);
     }

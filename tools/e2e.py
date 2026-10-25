@@ -209,7 +209,6 @@ def main(
         wait_until(lambda: button(driver, "Start").is_enabled(), 5, "Start not enabled after sample saved")
         button(driver, "Start").click()
         wait_text(driver, "Run started: Na-ZY", 2)
-        button(driver, "Valve open").click()
         wait_until(lambda: co2_value(driver) > 15000, message="Breakthrough not reached")
         shot(driver, "04-running")
 
@@ -226,6 +225,11 @@ def main(
         button(driver, "Finish").click()
         for index, value in enumerate(SOAP_TIMES):
             fill(driver, f"soapTime-{index}", value)
+        # Add creates row 11; its delete button removes it again
+        dialog_button(driver, "Add").click()
+        driver.find_element(By.ID, "soapTime-10")
+        driver.find_element(By.CSS_SELECTOR, "button[aria-label='Delete time 11']").click()
+        wait_until(lambda: not driver.find_elements(By.ID, "soapTime-10"), 5, "Soap film row not deleted")
         shot(driver, "06-finish")
         dialog_button(driver, "Finish").click()
         wait_text(driver, "Exported")
@@ -343,6 +347,24 @@ def main(
         assert abs(driver.execute_script(clock_start) - cleared_at) < 5000, (driver.execute_script(clock_start), cleared_at)
         shot(driver, "13-cleared")
         print("Clear chart: confirmation, measurements outside runs deleted, run measurements kept")
+
+        # Delete button of message removes it from log and database
+        messages = query_count(work, "SELECT COUNT(*) FROM messages")
+        # Newest message is in view; log follows end of list
+        driver.find_elements(By.CSS_SELECTOR, "button[aria-label='Delete message']")[-1].click()
+        wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM messages") == messages - 1, 5, "Message not deleted")
+        print("Message deleted")
+
+        # Delete in History removes checked runs after confirmation
+        driver.find_element(By.XPATH, "//button[normalize-space()='History']").click()
+        row = driver.find_element(By.XPATH, "//tr[td[normalize-space()='Crash test']]")
+        row.find_element(By.CSS_SELECTOR, "button[role=checkbox]").click()
+        button(driver, "Delete").click()
+        wait_text(driver, "This action will delete Crash test. This action is irreversible.")
+        shot(driver, "14-delete")
+        dialog_button(driver, "Delete").click()
+        wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM runs") == 1, 5, "Run not deleted")
+        print("Run deleted in History")
         driver.quit()
     finally:
         for process in reversed(processes):

@@ -26,7 +26,15 @@ function Section({ title, children }: { title: React.ReactNode; children: React.
   )
 }
 
-export function StatusPanel({ state, now }: { state: MonitorState; now: number }) {
+export function StatusPanel({
+  state,
+  now,
+  onDeleteMessage,
+}: {
+  state: MonitorState
+  now: number
+  onDeleteMessage: (id: number) => void
+}) {
   const { connection, latest, activeRun, settings, measurements, equilibriumAt, lastRun, lastResult, messages } = state
   const scale = activeRun?.conversionScale ?? settings?.conversionScale ?? 1785.9
   const exponent = activeRun?.conversionExponent ?? settings?.conversionExponent ?? 0.0111
@@ -99,7 +107,7 @@ export function StatusPanel({ state, now }: { state: MonitorState; now: number }
         </Section>
       )}
       <Separator />
-      <MessageLog messages={messages} />
+      <MessageLog messages={messages} onDelete={onDeleteMessage} />
     </aside>
   )
 }

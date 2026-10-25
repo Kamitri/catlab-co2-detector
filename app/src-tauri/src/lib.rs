@@ -19,7 +19,6 @@ use calculation::{RunResult, Series, calculate, run_stoichiometric_time};
 use db::Database;
 use model::{Connection, Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
 
-const VALVE_OPEN_LABEL: &str = "Valve open";
 const DAY_MS: i64 = 86_400_000;
 
 /// Without tray, hidden window could not be shown again; close button then exits.
@@ -223,28 +222,11 @@ fn running_run(database: &Database, id: i64) -> CommandResult<Run> {
 }
 
 #[tauri::command]
-fn add_marker(
-    app: AppHandle,
-    state: State<AppState>,
-    id: i64,
-    label: String,
-    valve_open: bool,
-) -> CommandResult<Marker> {
+fn add_marker(app: AppHandle, state: State<AppState>, id: i64, label: String) -> CommandResult<Marker> {
     let database = lock(&state.database);
-    let mut run = running_run(&database, id)?;
-    let timestamp = now_ms();
-    if !valve_open {
-        let marker = database.insert_marker(id, timestamp, &label).map_err(error_text)?;
-        log(&app, &database, "info", &format!("Marker added: {label}"));
-        return Ok(marker);
-    }
-    // Valve open defines delay time; later click replaces earlier one
-    database.delete_markers(id, VALVE_OPEN_LABEL).map_err(error_text)?;
-    let marker = database.insert_marker(id, timestamp, VALVE_OPEN_LABEL).map_err(error_text)?;
-    run.parameters.delay_s = ((timestamp - run.started_at) as f64 / 1000.0).round();
-    database.update_parameters(id, &run.parameters).map_err(error_text)?;
-    log(&app, &database, "info", VALVE_OPEN_LABEL);
-    let _ = app.emit("run", &run);
+    running_run(&database, id)?;
+    let marker = database.insert_marker(id, now_ms(), &label).map_err(error_text)?;
+    log(&app, &database, "info", &format!("Marker added: {label}"));
     Ok(marker)
 }
 
@@ -459,6 +441,11 @@ fn log_message(app: AppHandle, state: State<AppState>, level: String, text: Stri
 }
 
 #[tauri::command]
+fn delete_message(state: State<AppState>, id: i64) -> CommandResult<()> {
+    lock(&state.database).delete_message(id).map_err(error_text)
+}
+
+#[tauri::command]
 fn data_folder(app: AppHandle) -> String {
     app.path().app_data_dir().map(|path| path.display().to_string()).unwrap_or_default()
 }
@@ -570,6 +557,7 @@ pub fn run() {
             list_runs,
             delete_run,
             log_message,
+            delete_message,
             data_folder,
             default_folder,
             exit_app,

@@ -15,14 +15,13 @@ interface LiveViewProps {
   state: MonitorState
   onSample: () => void
   onStart: () => void
-  onValveOpen: () => void
   onMarker: () => void
   onFinish: () => void
   onAbort: () => void
   onClear: () => void
 }
 
-export function LiveView({ state, onSample, onStart, onValveOpen, onMarker, onFinish, onAbort, onClear }: LiveViewProps) {
+export function LiveView({ state, onSample, onStart, onMarker, onFinish, onAbort, onClear }: LiveViewProps) {
   const { activeRun, measurements, measurementsVersion, markers, settings, viewStart } = state
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
   // Clock labels for hover outside run; only labels of new measurements are formatted on update
@@ -61,7 +60,6 @@ export function LiveView({ state, onSample, onStart, onValveOpen, onMarker, onFi
     [markers, viewStart],
   )
 
-  const valveOpened = markers.some((marker) => marker.label === "Valve open")
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -76,9 +74,6 @@ export function LiveView({ state, onSample, onStart, onValveOpen, onMarker, onFi
           <div className="mx-1 h-5 w-px bg-border" />
           {activeRun ? (
             <>
-              <Button variant={valveOpened ? "outline" : "default"} onClick={onValveOpen}>
-                Valve open
-              </Button>
               <Button variant="outline" onClick={onMarker}>
                 Add marker
               </Button>

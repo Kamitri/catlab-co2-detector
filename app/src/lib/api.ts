@@ -108,7 +108,7 @@ export const api = {
   /** Starts run at once with saved sample. */
   startRun: () => invoke<Run>("start_run"),
   updateRun: (id: number, parameters: RunParameters) => invoke<Run>("update_run", { id, parameters }),
-  addMarker: (id: number, label: string, valveOpen: boolean) => invoke<Marker>("add_marker", { id, label, valveOpen }),
+  addMarker: (id: number, label: string) => invoke<Marker>("add_marker", { id, label }),
   getMarkers: (id: number) => invoke<Marker[]>("get_markers", { id }),
   getRunResult: (id: number) => invoke<RunResult>("get_run_result", { id }),
   exportRun: (id: number) => invoke<string>("export_run", { id }),
@@ -122,6 +122,7 @@ export const api = {
   listRuns: () => invoke<Run[]>("list_runs"),
   deleteRun: (id: number) => invoke<void>("delete_run", { id }),
   logMessage: (level: MessageLevel, text: string) => invoke<void>("log_message", { level, text }),
+  deleteMessage: (id: number) => invoke<void>("delete_message", { id }),
   defaultFolder: () => invoke<string>("default_folder"),
   dataFolder: () => invoke<string>("data_folder"),
   exitApp: () => invoke<void>("exit_app"),

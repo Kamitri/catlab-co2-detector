@@ -62,7 +62,8 @@ export function FormRow({ label, id, invalid, wide, children }: FormRowProps) {
   return (
     <>
       <Label htmlFor={id} className={cn("font-normal text-muted-foreground", invalid && "text-destructive")}>
-        <span className="truncate">{label}</span>
+        {/* Line height above leading-none of Label keeps descenders, e.g. "p", inside truncated span */}
+        <span className="truncate leading-5">{label}</span>
       </Label>
       <div className={cn("min-w-0", wide && columns === 2 && "col-span-3")}>{children}</div>
     </>

@@ -215,6 +215,11 @@ impl Database {
         Ok(Message { id: self.connection.last_insert_rowid(), timestamp, level: level.into(), text: text.into() })
     }
 
+    pub fn delete_message(&self, id: i64) -> DbResult<()> {
+        self.connection.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     pub fn recent_messages(&self, limit: u32) -> DbResult<Vec<Message>> {
         let mut statement =
             self.connection.prepare("SELECT id, timestamp, level, text FROM messages ORDER BY id DESC LIMIT ?1")?;

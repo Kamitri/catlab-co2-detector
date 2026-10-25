@@ -1,3 +1,5 @@
+import { X } from "lucide-react"
+
 import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -84,9 +86,25 @@ export function SoapFilmFields({
                 <div className="w-35">
                   <NumberInput id={key} value={text} unit="s" invalid={invalid} onChange={(value) => setTime(index, value)} />
                 </div>
-                <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                <span className="w-24 whitespace-nowrap text-muted-foreground tabular-nums">
                   {time > 0 && volume > 0 ? `${formatNumber(soapFlowRate(volume, time))} mL/min` : ""}
                 </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Delete time ${index + 1}`}
+                  className="text-muted-foreground"
+                  disabled={values.soapTimesS.length === 1}
+                  onClick={() =>
+                    set(
+                      "soapTimesS",
+                      values.soapTimesS.filter((_, position) => position !== index),
+                    )
+                  }
+                >
+                  <X />
+                </Button>
               </div>
             </FormRow>
           )

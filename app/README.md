@@ -21,7 +21,7 @@ The serial protocol and the conversion formula are documented in [`docs/protocol
 - Charts show time in seconds on the bottom axis and clock time on the top axis. The chart of several runs in History shows seconds only.
 - Finish and Abort export the run to an xlsx file in the export folder. An existing file is never overwritten.
 - Export in History writes all checked runs to one workbook, one sheet per run. The sheet name is the start date and the sample, for example `2026-10-25_Na-ZY`.
-- Each sheet follows the layout and colors of `CO2 capture calculation standard.xlsx`: data in columns A to H, parameters in columns J to N, soap film times in columns P to R, and the chart from column T.
+- Each sheet follows the layout and colors of `CO2 capture calculation standard.xlsx`: data in columns A to H, parameters in columns J to N, soap film times in columns P to R, and the chart below the soap film times.
 - The workbook has live formulas. `src-tauri/src/calculation.rs` uses the same method, and `src-tauri/examples/export_check.rs` checks that both produce the same results.
 
 ## Calculation
