@@ -4,10 +4,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 export interface Settings {
   exportFolder: string
   fileNamePattern: string
-  baselineWindowS: number
   coWindowS: number
   equilibriumBandPercent: number
-  equilibriumDurationS: number
   conversionScale: number
   conversionExponent: number
   extraPorts: string[]
@@ -29,7 +27,6 @@ export interface RunParameters {
   pressureBar: number
   temperatureC: number
   delayS: number
-  baselineWindowS: number
   coWindowS: number
   blankRunId: number | null
 }

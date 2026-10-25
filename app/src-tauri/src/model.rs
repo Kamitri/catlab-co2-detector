@@ -7,10 +7,8 @@ use crate::protocol::{VENDOR_EXPONENT, VENDOR_SCALE};
 pub struct Settings {
     pub export_folder: String,
     pub file_name_pattern: String,
-    pub baseline_window_s: f64,
     pub co_window_s: f64,
     pub equilibrium_band_percent: f64,
-    pub equilibrium_duration_s: f64,
     pub conversion_scale: f64,
     pub conversion_exponent: f64,
     pub extra_ports: Vec<String>,
@@ -22,10 +20,8 @@ impl Default for Settings {
         Self {
             export_folder: String::new(),
             file_name_pattern: "{date}_{time}_{sample}".into(),
-            baseline_window_s: 60.0,
             co_window_s: 300.0,
             equilibrium_band_percent: 3.0,
-            equilibrium_duration_s: 600.0,
             conversion_scale: VENDOR_SCALE,
             conversion_exponent: VENDOR_EXPONENT,
             extra_ports: Vec::new(),
@@ -80,7 +76,6 @@ pub struct RunParameters {
     pub pressure_bar: f64,
     pub temperature_c: f64,
     pub delay_s: f64,
-    pub baseline_window_s: f64,
     pub co_window_s: f64,
     pub blank_run_id: Option<i64>,
 }
@@ -100,7 +95,6 @@ impl Default for RunParameters {
             pressure_bar: 0.0,
             temperature_c: 0.0,
             delay_s: 0.0,
-            baseline_window_s: 0.0,
             co_window_s: 0.0,
             blank_run_id: None,
         }

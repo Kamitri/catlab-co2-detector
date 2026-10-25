@@ -4,7 +4,7 @@ import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
 import { stepValue } from "@/lib/step"
 import { timeAxisEnd } from "@/lib/view"
 
-const options = { bandPercent: 3, durationS: 600, baselineWindowS: 60, delayS: 0 }
+const options = { bandPercent: 3, windowS: 300, delayS: 0 }
 
 function series(values: (time: number) => number, length: number) {
   const x = Array.from({ length }, (_, index) => index + 1)

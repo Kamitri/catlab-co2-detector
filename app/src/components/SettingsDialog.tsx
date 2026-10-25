@@ -10,10 +10,8 @@ import { VENDOR_EXPONENT, VENDOR_SCALE } from "@/lib/data"
 import { parseNumber } from "@/lib/runForm"
 
 const NUMBER_KEYS = [
-  "baselineWindowS",
   "coWindowS",
   "equilibriumBandPercent",
-  "equilibriumDurationS",
   "conversionScale",
   "conversionExponent",
   "retentionDays",
@@ -119,7 +117,6 @@ export function SettingsDialog({
             </FormGroup>
             <FormGroup title="Calculation">
               <FormGrid columns={2}>
-                {numberRow("baselineWindowS", "Baseline window", "s")}
                 {numberRow(
                   "coWindowS",
                   <>
@@ -131,8 +128,7 @@ export function SettingsDialog({
             </FormGroup>
             <FormGroup title="Equilibrium">
               <FormGrid columns={2}>
-                {numberRow("equilibriumBandPercent", "Band", "%")}
-                {numberRow("equilibriumDurationS", "Duration", "s")}
+                {numberRow("equilibriumBandPercent", "Maximum variation", "%")}
               </FormGrid>
             </FormGroup>
             <FormGroup title="Conversion">

@@ -28,8 +28,9 @@ The serial protocol and the conversion formula are documented in [`docs/protocol
 
 The method follows `CO2 capture calculation standard.xlsx`, with these changes:
 
-- Baseline is the mean over the first baseline window (default 60 s), instead of the minimum.
-- Co is the mean over the last Co window (default 300 s) minus the baseline, instead of the maximum.
+- Baseline is the minimum of the run, as in the workbook. The baseline cancels out of the capacity: it changes only C/C₀ and the breakthrough time.
+- C₀ is the mean over the last C₀ window (default 300 s) minus the baseline, instead of the maximum. The maximum is the highest noise spike and makes the capacity increase with run length.
+- Equilibrium is reached when, over the C₀ window, (max − min) / mean is at most the maximum variation in Settings (default 3 %). C₀ is then the mean of a stable window.
 - Time steps come from timestamps, keeping the time axis correct when data is missing.
 - Optional blank run: its stoichiometric time is subtracted (correction for dead volume).
 - Flow rate is the mean of the soap film flow rates, each 60 × volume / time (mL/min). The number of times is free (10 by default).

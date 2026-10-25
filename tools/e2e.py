@@ -189,7 +189,6 @@ def main(
 
         button(driver, "Settings").click()
         fill(driver, "folder", str(work / "exports"))
-        fill(driver, "equilibriumDurationS", "2")
         fill(driver, "equilibriumBandPercent", "5")
         shot(driver, "02-settings")
         button(driver, "Save").click()
@@ -202,7 +201,6 @@ def main(
         fill(driver, "operator", "Test")
         fill(driver, "massG", "0.56")
         # Windows scaled to fast poll interval: data of 1 s real time covers about 400 s of run
-        fill(driver, "baselineWindowS", "0.5")
         fill(driver, "coWindowS", "1")
         shot(driver, "03-sample")
         dialog_button(driver, "Save").click()

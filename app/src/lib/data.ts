@@ -41,37 +41,30 @@ export function withGaps(x: number[], y: number[], threshold: number): { x: (num
 
 export interface EquilibriumOptions {
   bandPercent: number
-  durationS: number
-  baselineWindowS: number
+  /** C<sub>0</sub> window: equilibrium is checked over same interval that C<sub>0</sub> is averaged over. */
+  windowS: number
   delayS: number
 }
 
 /**
  * Returns elapsed time (s) at which concentration became stable, or null.
- * Stable: over last `durationS`, (max - min) / mean is within band, and mean is at least twice baseline
- * (so flat baseline before breakthrough is not detected).
+ * Stable: over last `windowS`, (max - min) / mean is within maximum variation, and mean is at least twice baseline
+ * (minimum of run), so flat baseline before breakthrough is not detected.
  */
 export function detectEquilibrium(series: Series, options: EquilibriumOptions): number | null {
   const { x, y } = series
   if (x.length < 2) return null
   const end = x[x.length - 1]
-  if (end - options.delayS < options.durationS) return null
-
-  let baselineSum = 0
-  let baselineCount = 0
-  for (let index = 0; index < x.length && x[index] <= options.baselineWindowS; index++) {
-    baselineSum += y[index]
-    baselineCount++
-  }
-  if (baselineCount === 0) return null
-  const baseline = baselineSum / baselineCount
+  if (end - options.delayS < options.windowS) return null
+  // Loop instead of Math.min(...y): spread of long run exceeds argument limit
+  const baseline = y.reduce((lowest, value) => Math.min(lowest, value), Infinity)
 
   let minimum = Infinity
   let maximum = -Infinity
   let sum = 0
   let count = 0
   let first = end
-  for (let index = x.length - 1; index >= 0 && x[index] >= end - options.durationS; index--) {
+  for (let index = x.length - 1; index >= 0 && x[index] >= end - options.windowS; index--) {
     minimum = Math.min(minimum, y[index])
     maximum = Math.max(maximum, y[index])
     sum += y[index]
@@ -79,7 +72,7 @@ export function detectEquilibrium(series: Series, options: EquilibriumOptions): 
     first = x[index]
   }
   // Window must be covered by data, not by one sample after long gap
-  if (end - first < 0.9 * options.durationS) return null
+  if (end - first < 0.9 * options.windowS) return null
   const mean = sum / count
   if (mean < 2 * baseline) return null
   return ((maximum - minimum) / mean) * 100 <= options.bandPercent ? end : null

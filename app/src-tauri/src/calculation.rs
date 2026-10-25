@@ -1,7 +1,6 @@
 //! CO2 capacity from breakthrough curve.
 //!
-//! Same method as `CO2 capture calculation standard.xlsx`, with these changes:
-//! baseline is mean over first `baseline_window_s` seconds instead of minimum,
+//! Same method as `CO2 capture calculation standard.xlsx` (baseline is minimum of run), with these changes:
 //! Co is mean over last `co_window_s` seconds instead of maximum, time steps come from
 //! real timestamps instead of row count, optional blank run is subtracted, and gas law
 //! uses R = 0.08206 L atm/(mol K) and 273.15 K.
@@ -88,11 +87,10 @@ pub fn effective_flow_rate(run: &Run) -> f64 {
     }
 }
 
-/// Mean baseline (ppmv) over first window.
-pub fn baseline(series: &Series, window_s: f64) -> f64 {
-    mean(
-        series.times.iter().zip(&series.concentrations).filter(|(time, _)| **time <= window_s).map(|(_, value)| *value),
-    )
+/// Baseline (ppmv): minimum of run, as in original workbook. Baseline cancels out of capacity; it shifts only
+/// C/Co and breakthrough time.
+pub fn baseline(series: &Series) -> f64 {
+    series.concentrations.iter().copied().reduce(f64::min).unwrap_or(f64::NAN)
 }
 
 /// Co (ppmv above baseline) as mean over last window.
@@ -124,7 +122,7 @@ pub fn stoichiometric_time(series: &Series, delay_s: f64, baseline_ppm: f64, co_
 
 /// Stoichiometric time of blank run, calculated with parameters of blank run.
 pub fn run_stoichiometric_time(run: &Run, series: &Series) -> f64 {
-    let baseline_ppm = baseline(series, run.parameters.baseline_window_s);
+    let baseline_ppm = baseline(series);
     let co_ppm = inlet_concentration(series, run.parameters.co_window_s, baseline_ppm);
     stoichiometric_time(series, run.parameters.delay_s, baseline_ppm, co_ppm)
 }
@@ -132,7 +130,7 @@ pub fn run_stoichiometric_time(run: &Run, series: &Series) -> f64 {
 pub fn calculate(run: &Run, series: &Series, blank_time_s: f64) -> RunResult {
     let parameters = &run.parameters;
     let flow = effective_flow_rate(run);
-    let baseline_ppm = baseline(series, parameters.baseline_window_s);
+    let baseline_ppm = baseline(series);
     let co_ppm = inlet_concentration(series, parameters.co_window_s, baseline_ppm);
     let end_time_s = series.times.last().copied().unwrap_or(0.0);
     let tb_s = end_time_s - parameters.delay_s;
@@ -209,7 +207,6 @@ mod tests {
             density_g_ml: 1.0,
             pressure_bar: 1.0,
             temperature_c: 30.0,
-            baseline_window_s: 10.0,
             co_window_s: 10.0,
             ..Default::default()
         }
@@ -262,6 +259,19 @@ mod tests {
         let mut measured = parameters();
         measured.flow_measurements = vec![58.0, 59.0, 60.0, 61.0, 62.0];
         assert_eq!(effective_flow_rate(&run(measured)), 60.0);
+    }
+
+    #[test]
+    fn baseline_is_minimum_and_cancels_out_of_capacity() {
+        // Start of run above flat level, as in measured runs
+        let mut series = step_series();
+        series.concentrations[0] = 1600.0;
+        series.concentrations[1] = 1300.0;
+        assert_eq!(baseline(&series), 1000.0);
+        let low = calculate(&run(parameters()), &series, 0.0);
+        let shifted = Series { concentrations: series.concentrations.iter().map(|value| value + 500.0).collect(), ..series };
+        let high = calculate(&run(parameters()), &shifted, 0.0);
+        assert!((low.adsorbed_volume_l - high.adsorbed_volume_l).abs() < 1e-15);
     }
 
     #[test]
