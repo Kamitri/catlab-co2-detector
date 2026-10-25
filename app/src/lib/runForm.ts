@@ -14,8 +14,10 @@ export type NumericKey = (typeof NUMERIC_KEYS)[number]
 
 const POSITIVE_KEYS: NumericKey[] = ["massG", "densityGMl", "pressureBar", "coWindowS", "soapVolumeMl"]
 
-/** Decimal places of fields set by precision of equipment: balance 0.0001 g, soap film flowmeter 0.1 mL. */
-export const DECIMALS: Partial<Record<NumericKey, number>> = { massG: 4, soapVolumeMl: 1 }
+/** Decimal places of fields set by precision of equipment (balance, soap film flowmeter) in Settings. */
+export type Decimals = Partial<Record<NumericKey, number>>
+
+export const DEFAULT_DECIMALS: Decimals = { massG: 4, soapVolumeMl: 1 }
 
 /** Number of soap film time fields shown when fewer times are stored. */
 export const SOAP_TIME_COUNT = 10
@@ -24,12 +26,12 @@ export const SOAP_TIME_COUNT = 10
 export type RunFormValues = Omit<RunParameters, NumericKey | "soapTimesS"> &
   Record<NumericKey, string> & { soapTimesS: string[] }
 
-export function toFormValues(parameters: RunParameters): RunFormValues {
+export function toFormValues(parameters: RunParameters, decimals: Decimals = DEFAULT_DECIMALS): RunFormValues {
   const values = { ...parameters } as unknown as RunFormValues
   for (const key of NUMERIC_KEYS) {
     const value = parameters[key]
-    const decimals = DECIMALS[key]
-    values[key] = decimals !== undefined && Number.isFinite(value) ? value.toFixed(decimals) : String(value ?? "")
+    const places = decimals[key]
+    values[key] = places !== undefined && Number.isFinite(value) ? value.toFixed(places) : String(value ?? "")
   }
   const times = (parameters.soapTimesS ?? []).map(String)
   while (times.length < SOAP_TIME_COUNT) times.push("")

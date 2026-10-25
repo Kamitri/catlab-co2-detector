@@ -10,8 +10,18 @@ type Filter = "all" | "warning" | "error"
 
 const LEVEL_STYLES: Record<MessageLevel, { icon: typeof Info; iconClass: string; rowClass: string; label: string }> = {
   info: { icon: Info, iconClass: "text-primary", rowClass: "", label: "Info" },
-  warning: { icon: TriangleAlert, iconClass: "text-amber-600", rowClass: "bg-amber-50", label: "Warning" },
-  error: { icon: CircleX, iconClass: "text-red-600", rowClass: "bg-red-50", label: "Error" },
+  warning: {
+    icon: TriangleAlert,
+    iconClass: "text-amber-600 dark:text-amber-400",
+    rowClass: "bg-amber-50 dark:bg-amber-400/10",
+    label: "Warning",
+  },
+  error: {
+    icon: CircleX,
+    iconClass: "text-red-600 dark:text-red-400",
+    rowClass: "bg-red-50 dark:bg-red-400/10",
+    label: "Error",
+  },
 }
 
 /** Distance from bottom (px) within which log follows new messages. */

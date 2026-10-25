@@ -10,7 +10,12 @@ export interface Settings {
   conversionExponent: number
   extraPorts: string[]
   retentionDays: number
+  massPrecisionG: number
+  soapVolumePrecisionMl: number
+  theme: Theme
 }
+
+export type Theme = "light" | "dark" | "system"
 
 export type RunStatus = "running" | "finished" | "aborted"
 

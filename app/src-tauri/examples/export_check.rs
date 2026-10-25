@@ -58,6 +58,8 @@ fn main() {
             measurements: &measurements,
             result: &result,
             blank_label: None,
+            mass_decimals: 4,
+            soap_volume_decimals: 1,
             cached_results: false,
         }],
     )

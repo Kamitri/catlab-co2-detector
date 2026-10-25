@@ -269,6 +269,8 @@ struct ExportJob {
     measurements: Measurements,
     result: RunResult,
     blank_label: Option<String>,
+    mass_decimals: usize,
+    soap_volume_decimals: usize,
 }
 
 /// Export folder of Settings, or default folder when not set; folder is created when missing.
@@ -293,7 +295,15 @@ fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResu
     let folder = export_folder_path(app, database)?;
     let path = export::unique_path(&folder, &export::file_name(&settings.file_name_pattern, &run));
     let (result, blank_label, measurements) = run_result(database, &run)?;
-    Ok(ExportJob { path, run, measurements, result, blank_label })
+    Ok(ExportJob {
+        path,
+        run,
+        measurements,
+        result,
+        blank_label,
+        mass_decimals: settings.mass_decimals(),
+        soap_volume_decimals: settings.soap_volume_decimals(),
+    })
 }
 
 /// Writes workbook without database lock, keeping acquisition able to store measurements during export.
@@ -303,6 +313,8 @@ fn write_export(app: &AppHandle, state: &AppState, job: ExportJob) -> CommandRes
         measurements: &job.measurements,
         result: &job.result,
         blank_label: job.blank_label.clone(),
+        mass_decimals: job.mass_decimals,
+        soap_volume_decimals: job.soap_volume_decimals,
         cached_results: true,
     };
     export::write_workbook(&job.path, &[input]).map_err(error_text)?;
@@ -333,11 +345,20 @@ fn export_run(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<
 fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: String) -> CommandResult<String> {
     let jobs = {
         let database = lock(&state.database);
+        let settings = database.settings().map_err(error_text)?;
         let mut jobs = Vec::new();
         for id in ids {
             let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
             let (result, blank_label, measurements) = run_result(&database, &run)?;
-            jobs.push(ExportJob { path: PathBuf::from(&path), run, measurements, result, blank_label });
+            jobs.push(ExportJob {
+                path: PathBuf::from(&path),
+                run,
+                measurements,
+                result,
+                blank_label,
+                mass_decimals: settings.mass_decimals(),
+                soap_volume_decimals: settings.soap_volume_decimals(),
+            });
         }
         jobs
     };
@@ -348,6 +369,8 @@ fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: Stri
             measurements: &job.measurements,
             result: &job.result,
             blank_label: job.blank_label.clone(),
+            mass_decimals: job.mass_decimals,
+            soap_volume_decimals: job.soap_volume_decimals,
             cached_results: true,
         })
         .collect();

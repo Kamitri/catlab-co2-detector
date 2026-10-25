@@ -52,19 +52,6 @@ export function StatusPanel({
 
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col border-l bg-sidebar">
-      <Section title="Connection">
-        <div className="flex items-center gap-2 text-sm">
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              connected ? "bg-emerald-500" : "animate-pulse bg-amber-500",
-            )}
-          />
-          <span className="font-medium">{connected ? "Connected" : "Searching"}</span>
-          {connection.state === "connected" && <span className="text-muted-foreground">{connection.port}</span>}
-        </div>
-      </Section>
-      <Separator />
       <Section title={<>CO<sub>2</sub></>}>
         <div className="flex items-baseline gap-2">
           <span className={cn("text-4xl font-semibold tabular-nums tracking-tight", !fresh && "text-muted-foreground")}>
@@ -89,8 +76,10 @@ export function StatusPanel({
         <Section title="Last run">
           <Row label="Sample" value={lastRun.parameters.sample} />
           <Row label="Status" value={lastRun.status === "finished" ? "Finished" : "Aborted"} />
-          <Row label="Capacity" value={`${formatNumber(lastResult?.capacityMgG)} mg/g`} />
-          <Row label="Capacity" value={`${formatNumber(lastResult?.capacityMmolG, 3)} mmol/g`} />
+          <Row
+            label="Capacity"
+            value={`${formatNumber(lastResult?.capacityMgG)} mg/g (${formatNumber(lastResult?.capacityMmolG, 3)} mmol/g)`}
+          />
           {lastRun.exportPath && (
             <Button
               variant="outline"
@@ -108,6 +97,19 @@ export function StatusPanel({
       )}
       <Separator />
       <MessageLog messages={messages} onDelete={onDeleteMessage} />
+      <Separator />
+      <Section title="Connection">
+        <div className="flex items-center gap-2 text-sm">
+          <span
+            className={cn(
+              "size-2 rounded-full",
+              connected ? "bg-emerald-500" : "animate-pulse bg-amber-500",
+            )}
+          />
+          <span className="font-medium">{connected ? "Connected" : "Searching"}</span>
+          {connection.state === "connected" && <span className="text-muted-foreground">{connection.port}</span>}
+        </div>
+      </Section>
     </aside>
   )
 }

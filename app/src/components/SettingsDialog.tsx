@@ -5,19 +5,26 @@ import { FormGrid, FormGroup, FormRow, NumberInput } from "@/components/FormLayo
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { api, type Settings } from "@/lib/api"
-import { VENDOR_EXPONENT, VENDOR_SCALE } from "@/lib/data"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { api, type Settings, type Theme } from "@/lib/api"
 import { parseNumber } from "@/lib/runForm"
+import { DEFAULT_SETTINGS } from "@/lib/settings"
 
 const NUMBER_KEYS = [
   "coWindowS",
   "equilibriumBandPercent",
+  "massPrecisionG",
+  "soapVolumePrecisionMl",
   "conversionScale",
   "conversionExponent",
   "retentionDays",
 ] as const
 
 type NumberKey = (typeof NUMBER_KEYS)[number]
+
+function numberTexts(settings: Settings): Record<NumberKey, string> {
+  return Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(settings[key])])) as Record<NumberKey, string>
+}
 
 export function SettingsDialog({
   settings,
@@ -32,9 +39,17 @@ export function SettingsDialog({
   const [defaultFolder, setDefaultFolder] = useState("")
   const [pattern, setPattern] = useState(settings.fileNamePattern)
   const [ports, setPorts] = useState(settings.extraPorts.join(", "))
-  const [numbers, setNumbers] = useState<Record<NumberKey, string>>(
-    () => Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(settings[key])])) as Record<NumberKey, string>,
-  )
+  const [theme, setTheme] = useState<Theme>(settings.theme)
+  const [numbers, setNumbers] = useState(() => numberTexts(settings))
+
+  // Fills form with default values; Save applies them
+  function resetToDefaults() {
+    setFolder(DEFAULT_SETTINGS.exportFolder)
+    setPattern(DEFAULT_SETTINGS.fileNamePattern)
+    setPorts(DEFAULT_SETTINGS.extraPorts.join(", "))
+    setTheme(DEFAULT_SETTINGS.theme)
+    setNumbers(numberTexts(DEFAULT_SETTINGS))
+  }
 
   useEffect(() => {
     void api.defaultFolder().then(setDefaultFolder)
@@ -73,6 +88,7 @@ export function SettingsDialog({
       retentionDays: Math.round(parsed.retentionDays),
       exportFolder: folder.trim(),
       fileNamePattern: pattern.trim(),
+      theme,
       extraPorts: ports
         .split(",")
         .map((port) => port.trim())
@@ -82,7 +98,7 @@ export function SettingsDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
         <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
@@ -131,24 +147,32 @@ export function SettingsDialog({
                 {numberRow("equilibriumBandPercent", "Maximum variation", "%")}
               </FormGrid>
             </FormGroup>
+            <FormGroup title="Precision">
+              <FormGrid columns={2}>
+                {numberRow("massPrecisionG", "Sorbent mass", "g")}
+                <div className="col-span-2" />
+                {numberRow("soapVolumePrecisionMl", "Soap film volume", "mL")}
+              </FormGrid>
+            </FormGroup>
             <FormGroup title="Conversion">
               <FormGrid columns={2}>
                 {numberRow("conversionScale", "Scale", "ppm")}
                 {numberRow("conversionExponent", "Exponent")}
-                <FormRow wide>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      setNumbers((current) => ({
-                        ...current,
-                        conversionScale: String(VENDOR_SCALE),
-                        conversionExponent: String(VENDOR_EXPONENT),
-                      }))
-                    }
-                  >
-                    Reset conversion
-                  </Button>
+              </FormGrid>
+            </FormGroup>
+            <FormGroup title="Display">
+              <FormGrid columns={2}>
+                <FormRow label="Theme" id="theme">
+                  <Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
+                    <SelectTrigger id="theme" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="light">Light</SelectItem>
+                      <SelectItem value="dark">Dark</SelectItem>
+                      <SelectItem value="system">System</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </FormRow>
               </FormGrid>
             </FormGroup>
@@ -163,6 +187,9 @@ export function SettingsDialog({
             </FormGroup>
           </div>
           <DialogFooter>
+            <Button type="button" variant="outline" className="sm:mr-auto" onClick={resetToDefaults}>
+              Reset to defaults
+            </Button>
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>

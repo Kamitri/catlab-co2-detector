@@ -197,9 +197,14 @@ def main(
         button(driver, "Settings").click()
         fill(driver, "folder", str(work / "exports"))
         fill(driver, "equilibriumBandPercent", "5")
+        # Dark theme; later screenshots show it
+        driver.find_element(By.ID, "theme").click()
+        driver.find_element(By.XPATH, "//div[@role='option'][normalize-space()='Dark']").click()
         shot(driver, "02-settings")
         button(driver, "Save").click()
         wait_text(driver, "Settings saved")
+        dark = "return document.documentElement.classList.contains('dark')"
+        wait_until(lambda: driver.execute_script(dark), 5, "Dark theme not applied")
 
         # Sample is configured before Start; Start then starts run at once
         assert not button(driver, "Start").is_enabled(), "Start enabled without sample"
@@ -373,6 +378,18 @@ def main(
         dialog_button(driver, "Delete").click()
         wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM runs") == 1, 5, "Run not deleted")
         print("Run deleted in History")
+
+        # Reset to defaults fills form with default values; Cancel keeps saved settings
+        button(driver, "Settings").click()
+        dialog_button(driver, "Reset to defaults").click()
+        assert driver.find_element(By.ID, "equilibriumBandPercent").get_attribute("value") == "3"
+        assert driver.find_element(By.ID, "massPrecisionG").get_attribute("value") == "0.0001"
+        theme_text = driver.find_element(By.ID, "theme").get_attribute("textContent")
+        assert theme_text == "Light", theme_text
+        shot(driver, "15-settings-defaults")
+        dialog_button(driver, "Cancel").click()
+        assert driver.execute_script(dark), "Cancel changed theme"
+        print("Settings: dark theme, Reset to defaults")
         driver.quit()
     finally:
         for process in reversed(processes):

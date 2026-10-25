@@ -109,6 +109,9 @@ pub struct ExportInput<'a> {
     pub measurements: &'a Measurements,
     pub result: &'a RunResult,
     pub blank_label: Option<String>,
+    /// Decimal places of sorbent mass and soap film volume, from precision in Settings.
+    pub mass_decimals: usize,
+    pub soap_volume_decimals: usize,
     /// Write cached formula results; disable in tests to force recalculation.
     pub cached_results: bool,
 }
@@ -423,10 +426,10 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     for (index, row_data) in inputs.iter().enumerate() {
         let row = input_start + index as u32;
         write_label(sheet, row, BLOCK_LABEL, row_data.label, &styles.input_label)?;
-        // Decimal places of balance (0.0001 g) and soap film flowmeter (0.1 mL)
+        // Decimal places of balance and soap film flowmeter, from precision in Settings
         let value_format = match row_data.name {
-            Some("SampleMass") => styles.input.clone().set_num_format("0.0000"),
-            Some("SoapVolume") => styles.input.clone().set_num_format("0.0"),
+            Some("SampleMass") => styles.input.clone().set_num_format(decimal_format(input.mass_decimals)),
+            Some("SoapVolume") => styles.input.clone().set_num_format(decimal_format(input.soap_volume_decimals)),
             _ => styles.input.clone(),
         };
         sheet.write_number_with_format(row, BLOCK_VALUE, row_data.value, &value_format)?;
@@ -572,6 +575,11 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     Ok(())
 }
 
+/// Number format with fixed decimal places, e.g. 2 -> "0.00".
+fn decimal_format(decimals: usize) -> String {
+    if decimals == 0 { "0".into() } else { format!("0.{}", "0".repeat(decimals)) }
+}
+
 /// Column letter of 0-based column index (columns below 26 only).
 fn column_letter(column: u16) -> char {
     char::from(b'A' + column as u8)
@@ -659,6 +667,8 @@ mod tests {
             measurements: &measurements,
             result: &result,
             blank_label: None,
+            mass_decimals: 4,
+            soap_volume_decimals: 1,
             cached_results: true,
         };
         // Two runs with same date and sample get separate sheet names
