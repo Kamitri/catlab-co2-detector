@@ -7,7 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use co2_monitor_lib::acquisition::{Sink, spawn};
+use co2_monitor_lib::acquisition::{Sink, Timing, spawn};
+
+/// Poll interval of tests; real detector uses 1 s.
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
 use co2_monitor_lib::model::Connection;
 
 #[derive(Default)]
@@ -78,7 +81,7 @@ fn wait_for(condition: impl Fn() -> bool, timeout: Duration) -> bool {
         if condition() {
             return true;
         }
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(10));
     }
     false
 }
@@ -90,7 +93,7 @@ fn connects_polls_and_reconnects() {
     let app_port = directory.path().join("app").display().to_string();
     let recorder = Arc::new(Recorder { ports: vec![app_port.clone()], ..Default::default() });
     let stop = Arc::new(AtomicBool::new(false));
-    let handle = spawn(recorder.clone(), stop.clone());
+    let handle = spawn(recorder.clone(), Timing::fast(POLL_INTERVAL), stop.clone());
 
     let device = VirtualDevice::start(directory.path());
     let connected = Connection::Connected { port: app_port.clone() };
@@ -115,12 +118,12 @@ fn connects_polls_and_reconnects() {
     ));
     assert!(wait_for(|| recorder.measurements.lock().unwrap().len() >= count_before + 3, Duration::from_secs(10)));
 
-    // Measurements arrive about once per second
+    // Measurements arrive at poll interval
     let measurements = recorder.measurements.lock().unwrap().clone();
     let last = &measurements[measurements.len() - 3..];
     for pair in last.windows(2) {
         let interval = pair[1].0 - pair[0].0;
-        assert!((800..=1300).contains(&interval), "Interval {interval} ms");
+        assert!((25..=200).contains(&interval), "Interval {interval} ms");
     }
 
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -134,15 +137,15 @@ fn connects_polls_and_reconnects() {
 fn reports_no_reply_and_accepts_slow_reply() {
     let directory = tempfile::tempdir().unwrap();
     let app_port = directory.path().join("app").display().to_string();
-    let device = VirtualDevice::start_with(directory.path(), &["--delay", "0.7"]);
-    thread::sleep(Duration::from_secs(1));
+    // Reply delay longer than poll interval, shorter than reply timeout
+    let device = VirtualDevice::start_with(directory.path(), &["--delay", "0.12"]);
 
     // Detector does not reply: scan reports port result
     let signal = |name: &str| Command::new("kill").arg(name).arg(device.simulator.id().to_string()).status().unwrap();
     signal("-STOP");
     let recorder = Arc::new(Recorder { ports: vec![app_port.clone()], ..Default::default() });
     let stop = Arc::new(AtomicBool::new(false));
-    let handle = spawn(recorder.clone(), stop.clone());
+    let handle = spawn(recorder.clone(), Timing::fast(POLL_INTERVAL), stop.clone());
     let no_reply = format!("{app_port}: no reply");
     let reported = || {
         recorder
@@ -154,7 +157,7 @@ fn reports_no_reply_and_accepts_slow_reply() {
     };
     assert!(wait_for(reported, Duration::from_secs(25)), "{:#?}", recorder.messages.lock().unwrap());
 
-    // Detector replies after 700 ms: reply is accepted
+    // Detector replies after 120 ms: reply is accepted
     signal("-CONT");
     let connected = Connection::Connected { port: app_port.clone() };
     assert!(wait_for(|| recorder.connections.lock().unwrap().contains(&connected), Duration::from_secs(15)));
