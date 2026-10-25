@@ -346,7 +346,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
             "mL/min",
             Some("FlowRate"),
         ),
-        BlockRow::formula("Samples", "=COUNT(A:A)".into(), result.sample_count as f64, "", None),
+        BlockRow::formula("# data points", "=COUNT(A:A)".into(), result.sample_count as f64, "", None),
         BlockRow::formula("End time", "=MAX(A:A)".into(), result.end_time_s, "s", Some("EndTime")),
         BlockRow::formula("Baseline", "=MIN(D:D)".into(), result.baseline_ppm, "ppmv", Some("Baseline")),
         BlockRow::formula(

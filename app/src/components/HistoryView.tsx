@@ -31,7 +31,7 @@ interface RunData {
 
 function ResultTable({ result }: { result: RunResult }) {
   const rows: [React.ReactNode, string][] = [
-    ["Samples", formatInteger(result.sampleCount)],
+    ["# data points", formatInteger(result.sampleCount)],
     ["Missing data", `${formatInteger(result.missingTimeS)} s`],
     ["Flow rate", `${formatNumber(result.flowRateMlMin)} mL/min`],
     ["Baseline", `${formatInteger(result.baselinePpm)} ppm`],

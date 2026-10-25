@@ -95,6 +95,8 @@ export function SoapFilmFields({
                   variant="ghost"
                   size="icon-xs"
                   aria-label={`Delete time ${index + 1}`}
+                  // Tab goes from time to next time, not to delete button
+                  tabIndex={-1}
                   className="text-muted-foreground"
                   disabled={values.soapTimesS.length === 1}
                   onClick={() =>

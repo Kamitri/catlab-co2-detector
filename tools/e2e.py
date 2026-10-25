@@ -156,7 +156,7 @@ def fill(driver: webdriver.Remote, element_id: str, value: str) -> None:
 
 def main(
     work: Annotated[Path, typer.Option(help="Work folder")] = Path("/tmp/co2-e2e"),
-    step: Annotated[int, typer.Option(help="Samples per poll")] = 20,
+    step: Annotated[int, typer.Option(help="Data points per poll")] = 20,
     poll_interval: Annotated[int, typer.Option(help="Poll interval of application (ms)")] = 50,
 ) -> None:
     """Run end-to-end scenario and save screenshots in work folder."""
@@ -189,6 +189,9 @@ def main(
         driver.set_window_size(1440, 900)
         wait_text(driver, "Connected to")
         wait_until(lambda: co2_value(driver) > 0, message="Measurement not shown")
+        # Pointer is not on chart: line and label at newest data point
+        latest = "return document.querySelector('.js-plotly-plot').layout.annotations.some((note) => note.text.endsWith(' ppm'))"
+        wait_until(lambda: driver.execute_script(latest), 5, "Newest data point not shown")
         shot(driver, "01-monitor")
 
         button(driver, "Settings").click()

@@ -1,12 +1,12 @@
 import { useMemo, useRef, useState } from "react"
 
-import { Chart, type DragMode } from "@/components/Chart"
+import { Chart, type ChartLatest, type DragMode } from "@/components/Chart"
 import { ChartControls } from "@/components/ChartControls"
 import { Button } from "@/components/ui/button"
 import { useChartView } from "@/hooks/useChartView"
 import type { MonitorState } from "@/hooks/useMonitor"
 import { concentration, GAP_THRESHOLD_MS, withGaps } from "@/lib/data"
-import { formatClock } from "@/lib/format"
+import { formatClock, formatInteger } from "@/lib/format"
 import { defaultView } from "@/lib/view"
 
 const CO2_HOVER = "%{y:,.0f} ppm<extra></extra>"
@@ -54,6 +54,20 @@ export function LiveView({ state, onSample, onStart, onMarker, onFinish, onAbort
   }, [activeRun, settings, measurementsVersion, viewStart])
 
   const chartView = useChartView(defaultView(lastTime), `${activeRun?.id ?? "monitor"}-${viewStart}`)
+
+  // Newest data point, shown on chart while pointer is outside it; label as hover label
+  const latest = useMemo((): ChartLatest | undefined => {
+    const last = measurements.timestamps.length - 1
+    if (last < 0) return undefined
+    const scale = activeRun?.conversionScale ?? settings?.conversionScale ?? 1785.9
+    const exponent = activeRun?.conversionExponent ?? settings?.conversionExponent ?? 0.0111
+    const value = concentration(measurements.counts[last], scale, exponent)
+    const timestamp = measurements.timestamps[last]
+    const seconds = (timestamp - viewStart) / 1000
+    return { x: seconds, y: value, text: `${formatInteger(seconds)}<br>${formatClock(timestamp)} · ${formatInteger(value)} ppm` }
+    // measurementsVersion marks in-place updates of measurements arrays
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun, settings, measurementsVersion, viewStart])
 
   const chartMarkers = useMemo(
     () => markers.map((marker) => ({ x: (marker.timestamp - viewStart) / 1000, label: marker.label })),
@@ -122,6 +136,7 @@ export function LiveView({ state, onSample, onStart, onMarker, onFinish, onAbort
           onViewChange={chartView.setView}
           dragMode={dragMode}
           clockStart={viewStart}
+          latest={latest}
         />
       </div>
     </div>
