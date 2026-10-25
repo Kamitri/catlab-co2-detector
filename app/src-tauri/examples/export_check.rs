@@ -39,8 +39,7 @@ fn main() {
         export_path: None,
         parameters: RunParameters {
             sample: "Check".into(),
-            flow_rate_ml_min: 60.0,
-            flow_measurements: vec![59.0, 60.5, 61.0, 60.0, 59.5],
+            soap_times_s: vec![2.62, 2.75, 2.81, 2.68, 2.9, 2.71, 2.77, 2.66, 2.85, 2.73],
             mass_g: 0.56,
             density_g_ml: 1.0,
             pressure_bar: 1.0,
@@ -55,13 +54,13 @@ fn main() {
     let result = calculate(&run, &series, blank_time_s);
     write_workbook(
         std::path::Path::new(&arguments[2]),
-        &ExportInput {
+        &[ExportInput {
             run: &run,
             measurements: &measurements,
             result: &result,
             blank_label: None,
             cached_results: false,
-        },
+        }],
     )
     .unwrap();
     println!("{}", serde_json::to_string(&result).unwrap());

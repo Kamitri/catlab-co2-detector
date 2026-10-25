@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
+import openpyxl
 import typer
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
@@ -94,6 +95,27 @@ def window_visible(title: str) -> bool:
     return bool(result.stdout.strip())
 
 
+SOAP_TIMES = ["2.62", "2.75", "2.81", "2.68", "2.9", "2.71", "2.77", "2.66", "2.85", "2.73"]
+
+
+def dialog_button(driver: webdriver.Remote, text: str):
+    """Find button by label in open dialog."""
+    return driver.find_element(By.XPATH, f"//div[@role='dialog' or @role='alertdialog']//button[normalize-space()='{text}']")
+
+
+def check_export(work: Path) -> None:
+    """Check sheet of first export: name date_sample, soap film times, and flow rate from times."""
+    path = next((work / "exports").glob("*Na-ZY*.xlsx"))
+    sheet = openpyxl.load_workbook(path, data_only=True).worksheets[0]
+    assert sheet.title.endswith("_Na-ZY"), sheet.title
+    times = [sheet.cell(row, 17).value for row in range(8, 18)]
+    assert times == [float(time) for time in SOAP_TIMES], times
+    flow = next(sheet.cell(row, 12).value for row in range(1, 60) if sheet.cell(row, 11).value == "Flow rate")
+    expected = sum(300 / float(time) for time in SOAP_TIMES) / len(SOAP_TIMES)
+    assert abs(flow - expected) < 1e-9, (flow, expected)
+    print(f"Export: sheet {sheet.title}, flow rate {flow:.2f} mL/min from {len(times)} soap film times")
+
+
 def query_count(work: Path, sql: str) -> int:
     """Return count from query on application database."""
     with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
@@ -173,16 +195,20 @@ def main(
         button(driver, "Save").click()
         wait_text(driver, "Settings saved")
 
-        # Windows scaled to fast poll interval: data of 1 s real time covers about 400 s of run
-        button(driver, "Start").click()
+        # Sample is configured before Start; Start then starts run at once
+        assert not button(driver, "Start").is_enabled(), "Start enabled without sample"
+        button(driver, "Sample").click()
         fill(driver, "sample", "Na-ZY")
         fill(driver, "operator", "Test")
         fill(driver, "massG", "0.56")
+        # Windows scaled to fast poll interval: data of 1 s real time covers about 400 s of run
         fill(driver, "baselineWindowS", "0.5")
         fill(driver, "coWindowS", "1")
-        shot(driver, "03-start")
-        driver.find_element(By.XPATH, "//div[@role='dialog']//button[normalize-space()='Start']").click()
-        wait_text(driver, "Run started: Na-ZY")
+        shot(driver, "03-sample")
+        dialog_button(driver, "Save").click()
+        wait_until(lambda: button(driver, "Start").is_enabled(), 5, "Start not enabled after sample saved")
+        button(driver, "Start").click()
+        wait_text(driver, "Run started: Na-ZY", 2)
         button(driver, "Valve open").click()
         wait_until(lambda: co2_value(driver) > 15000, message="Breakthrough not reached")
         shot(driver, "04-running")
@@ -198,12 +224,13 @@ def main(
         wait_text(driver, "Equilibrium reached", 60)
         shot(driver, "05-equilibrium")
         button(driver, "Finish").click()
-        for index, value in enumerate(["59", "60.5", "61", "60", "59.5"]):
-            fill(driver, f"flow-{index}", value)
+        for index, value in enumerate(SOAP_TIMES):
+            fill(driver, f"soapTime-{index}", value)
         shot(driver, "06-finish")
-        driver.find_element(By.XPATH, "//div[@role='dialog']//button[normalize-space()='Finish']").click()
+        dialog_button(driver, "Finish").click()
         wait_text(driver, "Exported")
         shot(driver, "07-finished")
+        check_export(work)
 
         driver.find_element(By.XPATH, "//button[normalize-space()='History']").click()
         driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
@@ -215,12 +242,14 @@ def main(
 
         # Close button during run: window hides to tray and recording continues
         driver.find_element(By.XPATH, "//button[normalize-space()='Live']").click()
-        button(driver, "Start").click()
+        button(driver, "Sample").click()
         fill(driver, "sample", "Crash test")
-        driver.find_element(By.XPATH, "//div[@role='dialog']//button[normalize-space()='Start']").click()
+        dialog_button(driver, "Save").click()
+        wait_until(lambda: not driver.find_elements(By.XPATH, "//div[@role='dialog']"), 5, "Sample dialog not closed")
+        button(driver, "Start").click()
         wait_text(driver, "Run started: Crash test")
-        close_window("CO₂ Monitor")
-        wait_until(lambda: not window_visible("CO₂ Monitor"), 5, "Window still visible after close during run")
+        close_window("CATlab CO₂ Monitor")
+        wait_until(lambda: not window_visible("CATlab CO₂ Monitor"), 5, "Window still visible after close during run")
         count = measurement_count(work)
         wait_until(lambda: measurement_count(work) >= count + 5, 5, "Recording stopped after window close")
         print("Close during run: window hidden, recording continues")
@@ -244,6 +273,17 @@ def main(
         driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Abort']").click()
         wait_text(driver, "Exported", count=2)
         shot(driver, "11-aborted")
+
+        # Several runs to one workbook, one sheet per run (native save dialog is skipped)
+        combined = work / "exports" / "combined.xlsx"
+        driver.execute_async_script(
+            "const done = arguments[arguments.length - 1];"
+            "window.__TAURI_INTERNALS__.invoke('export_runs', {ids: [1, 2], path: arguments[0]}).then(done, done)",
+            str(combined),
+        )
+        sheets = openpyxl.load_workbook(combined).sheetnames
+        assert len(sheets) == 2 and sheets[0].endswith("_Na-ZY") and sheets[1].endswith("_Crash test"), sheets
+        print("Export of several runs:", sheets)
 
         # Chart view checks run last: after WebDriver pointer actions, WebKit WebDriver drops Shift in typing
         # Default view: fixed axes that do not follow each new measurement

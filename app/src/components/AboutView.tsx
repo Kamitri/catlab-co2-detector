@@ -53,7 +53,7 @@ export function AboutView() {
           <img src={icon} alt="" className="size-16" draggable={false} />
           <div>
             <h2 className="text-xl font-semibold">
-              CO<sub>2</sub> Monitor
+              CATlab CO<sub>2</sub> Monitor
             </h2>
             <p className="text-sm text-muted-foreground">Version {version}</p>
           </div>

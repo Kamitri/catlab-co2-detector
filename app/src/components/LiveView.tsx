@@ -13,6 +13,7 @@ const CO2_HOVER = "%{y:,.0f} ppm<extra></extra>"
 
 interface LiveViewProps {
   state: MonitorState
+  onSample: () => void
   onStart: () => void
   onValveOpen: () => void
   onMarker: () => void
@@ -21,7 +22,7 @@ interface LiveViewProps {
   onClear: () => void
 }
 
-export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAbort, onClear }: LiveViewProps) {
+export function LiveView({ state, onSample, onStart, onValveOpen, onMarker, onFinish, onAbort, onClear }: LiveViewProps) {
   const { activeRun, measurements, measurementsVersion, markers, settings, viewStart } = state
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
   // Clock labels for hover outside run; only labels of new measurements are formatted on update
@@ -66,6 +67,13 @@ export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAb
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-4 border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={onSample}>
+            Sample
+          </Button>
+          <span className="max-w-48 truncate text-[13px] text-muted-foreground">
+            {(activeRun?.parameters ?? state.sample)?.sample}
+          </span>
+          <div className="mx-1 h-5 w-px bg-border" />
           {activeRun ? (
             <>
               <Button variant={valveOpened ? "outline" : "default"} onClick={onValveOpen}>
@@ -84,7 +92,7 @@ export function LiveView({ state, onStart, onValveOpen, onMarker, onFinish, onAb
             </>
           ) : (
             <>
-              <Button onClick={onStart} disabled={!state.ready}>
+              <Button onClick={onStart} disabled={!state.ready || !state.sample}>
                 Start
               </Button>
               <div className="mx-1 h-5 w-px bg-border" />

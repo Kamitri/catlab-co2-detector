@@ -1,3 +1,4 @@
+import { save } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
@@ -73,11 +74,11 @@ function RunDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
   const blankRuns = runs.filter((candidate) => candidate.id !== run.id && candidate.status !== "running")
-  const dirty = JSON.stringify(toParameters(form.values, run.parameters.flowMeasurements)) !== JSON.stringify(run.parameters)
+  const dirty = JSON.stringify(toParameters(form.values)) !== JSON.stringify(run.parameters)
 
   async function save() {
     if (form.errors.size > 0) return
-    await api.updateRun(run.id, toParameters(form.values, run.parameters.flowMeasurements))
+    await api.updateRun(run.id, toParameters(form.values))
     onSaved()
   }
 
@@ -228,6 +229,20 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
         }))
       : []
 
+  // Checked runs to one workbook, oldest first
+  async function exportChecked() {
+    const selected = runs.filter((run) => checked.has(run.id)).sort((first, second) => first.startedAt - second.startedAt)
+    const date = new Date().toLocaleDateString("en-CA")
+    const name = `${date}_${selected.map((run) => run.parameters.sample).join("_")}`.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120)
+    try {
+      const folder = await api.exportFolder()
+      const path = await save({ defaultPath: `${folder}/${name}.xlsx`, filters: [{ name: "Excel", extensions: ["xlsx"] }] })
+      if (path) await api.exportRuns(selected.map((run) => run.id), path)
+    } catch (error) {
+      await api.logMessage("error", String(error))
+    }
+  }
+
   function toggle(id: number) {
     setChecked((current) => {
       const next = new Set(current)
@@ -284,7 +299,14 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-end border-b px-4 py-2.5">
+          <div className="flex items-center justify-between gap-4 border-b px-4 py-2.5">
+            <Button
+              variant="outline"
+              disabled={checked.size === 0 || runs.some((run) => checked.has(run.id) && run.status === "running")}
+              onClick={() => void exportChecked()}
+            >
+              Export
+            </Button>
             <ChartControls
               dragMode={dragMode}
               onDragModeChange={setDragMode}

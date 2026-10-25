@@ -48,6 +48,10 @@ impl Database {
             CREATE TABLE IF NOT EXISTS settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sample (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                value TEXT NOT NULL
             );",
         )?;
         Ok(Self { connection })
@@ -232,6 +236,21 @@ impl Database {
         self.connection.execute(
             "INSERT OR REPLACE INTO settings (id, value) VALUES (1, ?1)",
             params![serde_json::to_string(settings).unwrap_or_default()],
+        )?;
+        Ok(())
+    }
+
+    /// Sample for next run, configured before Start.
+    pub fn sample(&self) -> DbResult<Option<RunParameters>> {
+        let value: Option<String> =
+            self.connection.query_row("SELECT value FROM sample WHERE id = 1", [], |row| row.get(0)).optional()?;
+        Ok(value.and_then(|text| serde_json::from_str(&text).ok()))
+    }
+
+    pub fn save_sample(&self, parameters: &RunParameters) -> DbResult<()> {
+        self.connection.execute(
+            "INSERT OR REPLACE INTO sample (id, value) VALUES (1, ?1)",
+            params![serde_json::to_string(parameters).unwrap_or_default()],
         )?;
         Ok(())
     }
