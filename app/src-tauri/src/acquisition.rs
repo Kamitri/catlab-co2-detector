@@ -57,7 +57,7 @@ impl Timing {
         }
     }
 
-    /// Debug builds only: CO2_POLL_INTERVAL_MS sets fast timing for end-to-end test. Release builds ignore it.
+    /// Fast timing from CO2_POLL_INTERVAL_MS, for end-to-end test; variable has effect in debug builds only.
     pub fn from_environment() -> Self {
         let interval = std::env::var("CO2_POLL_INTERVAL_MS").ok().and_then(|value| value.parse::<u64>().ok());
         match interval {
