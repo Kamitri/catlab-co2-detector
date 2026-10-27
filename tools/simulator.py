@@ -1,6 +1,7 @@
 """Detector simulator for development: replies to poll requests on serial port with values from legacy result file."""
 
 import math
+import signal
 import time
 from typing import Annotated
 
@@ -52,6 +53,13 @@ def main(
     buffer = b""
     index = offset
     replies = 0
+
+    def restart(*_: object) -> None:
+        """Restart replay at first sample; SIGUSR1 lets test start run before breakthrough."""
+        nonlocal index
+        index = offset
+
+    signal.signal(signal.SIGUSR1, restart)
     print(f"Simulator on {port} with {len(counts)} samples", flush=True)
     while True:
         buffer += connection.read(64)

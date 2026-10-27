@@ -59,7 +59,7 @@ python3 ../tools/simulator.py /tmp/co2-device --data "../CO2 NDIR Monitor/KQ/Na-
 CO2_EXTRA_PORTS=/tmp/co2-app npm run tauri dev
 ```
 
-`tools/e2e.py` runs a complete scenario on the built application (`npx tauri build --debug --no-bundle`) with `tauri-driver` and saves screenshots. It takes about 30 s: the script sets `CO2_POLL_INTERVAL_MS=50`, which makes a debug build poll every 50 ms instead of every second. Release builds ignore this variable. The acquisition integration tests use the same short timing (`Timing::fast`) and take about 3 s.
+`tools/e2e.py` runs a complete scenario on the built application (`npx tauri build --debug --no-bundle`) with `tauri-driver` and saves screenshots. It takes about 70 s: the script sets `CO2_POLL_INTERVAL_MS=50`, which makes a debug build poll every 50 ms instead of every second. Release builds ignore this variable. The acquisition integration tests use the same short timing (`Timing::fast`) and take about 3 s.
 
 ## Windows build
 
