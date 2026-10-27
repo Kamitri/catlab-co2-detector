@@ -35,8 +35,8 @@ interface ChartProps {
   xTitle: string
   yTitle: string
   markers?: ChartMarker[]
-  /** Changes on every data update. */
-  revision: number
+  /** Changes on every data update; Plotly redraws data only when it changes. */
+  revision: number | string
   view: View
   /** Called after zoom, pan, or wheel zoom by user. */
   onViewChange: (view: View) => void

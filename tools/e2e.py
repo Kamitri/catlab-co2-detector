@@ -171,6 +171,13 @@ def main(
         # Time zone other than UTC, so clock axis checks catch time zone errors
         TZ="Asia/Ho_Chi_Minh",
     )
+    # Session bus: single instance plugin finds running application over D-Bus on Linux
+    bus = subprocess.run(
+        ["dbus-daemon", "--session", "--fork", "--print-address=1", "--print-pid=1"], capture_output=True, text=True, check=True
+    ).stdout.split()
+    environment["DBUS_SESSION_BUS_ADDRESS"] = bus[0]
+    # Without accessibility bus, GTK waits for it when session bus exists
+    environment["NO_AT_BRIDGE"] = "1"
     processes = [start(["Xvfb", ":99", "-screen", "0", "1440x900x24"])]
     wait_until(lambda: Path("/tmp/.X11-unix/X99").exists(), 10, "Virtual display not started")
     processes.append(start(["socat", f"pty,raw,echo=0,link={work / 'device'}", f"pty,raw,echo=0,link={work / 'app'}"]))
@@ -257,7 +264,7 @@ def main(
         wait_text(driver, "All rights reserved")
         shot(driver, "08b-about")
 
-        # Close button during run: window hides to tray and recording continues
+        # Close button during run: confirmation, then window hides to tray and recording continues
         driver.find_element(By.XPATH, "//button[normalize-space()='Live']").click()
         button(driver, "Sample").click()
         fill(driver, "sample", "Crash test")
@@ -266,10 +273,24 @@ def main(
         button(driver, "Start").click()
         wait_text(driver, "Run started: Crash test")
         close_window("CATlab CO₂ Monitor")
+        wait_text(driver, "Data will be recorded while the app is closed.", 5)
+        shot(driver, "08c-close")
+        # Click from script after return: WebKit WebDriver waits for hidden window to finish click
+        driver.execute_script("setTimeout(() => arguments[0].click(), 100)", dialog_button(driver, "Close"))
         wait_until(lambda: not window_visible("CATlab CO₂ Monitor"), 5, "Window still visible after close during run")
         count = measurement_count(work)
         wait_until(lambda: measurement_count(work) >= count + 5, 5, "Recording stopped after window close")
-        print("Close during run: window hidden, recording continues")
+        print("Close during run: confirmation, window hidden, recording continues")
+
+        # Second start of application shows running window and exits
+        second = subprocess.Popen([str(APPLICATION)], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            second.wait(10)
+        except subprocess.TimeoutExpired:
+            second.kill()
+            raise AssertionError("Second start of application did not exit")
+        wait_until(lambda: window_visible("CATlab CO₂ Monitor"), 5, "Window not shown by second start")
+        print("Second start: running window shown")
 
         # Crash during run: application is killed, then restarted
         subprocess.run(["pkill", "-9", "-f", str(APPLICATION)], check=False)
@@ -445,6 +466,7 @@ def main(
         for process in reversed(processes):
             process.terminate()
         subprocess.run(["pkill", "-f", str(APPLICATION)], check=False)
+        os.kill(int(bus[1]), signal.SIGTERM)
     print(f"Scenario passed in {time.monotonic() - started:.0f} s")
     print("Exports:", sorted(path.name for path in (work / "exports").glob("*")))
 

@@ -132,6 +132,15 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
+/// Hides window to tray after confirmation in UI; acquisition and recording continue.
+#[tauri::command]
+fn hide_window(app: AppHandle, state: State<AppState>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    log(&app, &lock(&state.database), "info", "Window hidden to tray");
+}
+
 /// Exits directly without run in progress; otherwise UI requires confirmation first.
 fn request_exit(app: &AppHandle) {
     if has_active_run(app) {
@@ -592,6 +601,9 @@ fn create_tray(app: &tauri::App) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Registered first: second start of application shows running window and exits, instead of second
+        // acquisition competing for serial port and database
+        .plugin(tauri_plugin_single_instance::init(|app, _arguments, _folder| show_main_window(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -631,16 +643,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // During run, closing window hides it to tray; acquisition and recording continue
+            // Close button asks for confirmation in UI; confirmed close hides window to tray, and acquisition
+            // and recording continue. Exit is in tray menu.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let app = window.app_handle();
                 let tray_available = app.try_state::<TrayAvailable>().is_some_and(|tray| tray.0);
-                if tray_available && has_active_run(app) {
+                if tray_available {
                     api.prevent_close();
-                    let _ = window.hide();
-                    if let Some(state) = app.try_state::<AppState>() {
-                        log(app, &lock(&state.database), "info", "Window hidden to tray");
-                    }
+                    let _ = app.emit("close-requested", ());
                 }
             }
         })
@@ -673,6 +683,7 @@ pub fn run() {
             data_folder,
             default_folder,
             exit_app,
+            hide_window,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running application");
