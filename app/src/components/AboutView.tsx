@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import icon from "@/assets/icon.png"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import type { UpdateStatus, useUpdater } from "@/hooks/useUpdater"
 import { api } from "@/lib/api"
 
 const AUTHOR = "Nguyễn Minh Trí"
@@ -35,7 +36,16 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-export function AboutView() {
+const UPDATE_TEXT: Record<UpdateStatus, string> = {
+  idle: "",
+  checking: "Checking",
+  current: "Up to date",
+  available: "",
+  installing: "Installing",
+  failed: "Check failed",
+}
+
+export function AboutView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
   const [version, setVersion] = useState("")
   const [tauriVersion, setTauriVersion] = useState("")
   // Data folder holds exported xlsx files; cache folder holds database of application
@@ -71,6 +81,21 @@ export function AboutView() {
             </button>
           </Row>
           <Row label="Tauri">{tauriVersion}</Row>
+          <Row label="Updates">
+            <span className="flex items-center gap-2">
+              <span className="text-muted-foreground">
+                {updater.update ? `Version ${updater.update.version} available` : UPDATE_TEXT[updater.status]}
+              </span>
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={updater.status === "checking" || updater.status === "installing"}
+                onClick={() => void updater.checkNow()}
+              >
+                Check for updates
+              </Button>
+            </span>
+          </Row>
           <Row label="Data folder">
             <span className="flex items-center gap-2">
               <span className="truncate font-mono text-xs">{exportFolder}</span>

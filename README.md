@@ -26,7 +26,10 @@ Details: [`app/README.md`](app/README.md). Detector protocol: [`docs/protocol.md
 
 ## Release
 
-Push a tag `v<version>`, for example `v1.0.0`. The Build workflow attaches the installers to a release of that tag.
+1. Set `version` in `app/src-tauri/tauri.conf.json`, for example `1.0.0`.
+2. Push a tag with the same version, for example `v1.0.0`.
+
+The Build workflow attaches the installers and `latest.json` to a release of that tag. Installed applications find the release at start and update after confirmation. The workflow signs the installers with the repository secret `TAURI_SIGNING_PRIVATE_KEY`.
 
 ## License
 

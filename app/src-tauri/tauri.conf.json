@@ -42,5 +42,16 @@
     "publisher": "CATlab",
     "copyright": "© 2026 Nguyễn Minh Trí. All rights reserved.",
     "shortDescription": "CO₂ NDIR detector monitor"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5ODJGQUQxQURDNjk3REEKUldUYWw4YXQwZnFDcVgwMXhHemlVaFpDZVpaRkFYaXEwZVdBL1dkZFU0cEg2RkZnOUZwNWlwUGoK",
+      "endpoints": [
+        "https://github.com/Kamitri/catlab-co2-detector/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

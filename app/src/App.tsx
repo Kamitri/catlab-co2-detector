@@ -12,10 +12,11 @@ import icon from "@/assets/icon.png"
 import { useMonitor } from "@/hooks/useMonitor"
 import { PrecisionContext } from "@/hooks/usePrecision"
 import { useTheme } from "@/hooks/useTheme"
+import { useUpdater } from "@/hooks/useUpdater"
 import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
 import { DEFAULT_SETTINGS, decimals } from "@/lib/settings"
 
-type DialogState = "sample" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | null
+type DialogState = "sample" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | "update" | null
 type View = "live" | "history" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
@@ -82,6 +83,7 @@ export default function App() {
   const { activeRun, settings } = state
   const finishedRuns = runs.filter((run) => run.status !== "running")
   useTheme(settings?.theme)
+  const updater = useUpdater()
   const precision = useMemo(
     () => ({
       massG: decimals(settings?.massPrecisionG ?? DEFAULT_SETTINGS.massPrecisionG),
@@ -106,7 +108,13 @@ export default function App() {
             <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {updater.update && (
+            // Install restarts application, so it waits until run is finished
+            <Button disabled={activeRun !== null || updater.status === "installing"} onClick={() => setDialog("update")}>
+              Update to {updater.update.version}
+            </Button>
+          )}
           <Button variant="ghost" disabled={!settings} onClick={() => setDialog("settings")}>
             Settings
           </Button>
@@ -127,7 +135,7 @@ export default function App() {
           ) : view === "history" ? (
             <HistoryView refreshKey={`${state.activeRun?.id}-${state.lastRun?.id}-${state.lastRun?.exportPath}`} />
           ) : (
-            <AboutView />
+            <AboutView updater={updater} />
           )}
         </main>
         <StatusPanel
@@ -202,6 +210,17 @@ export default function App() {
           onConfirm={() => {
             setDialog(null)
             void handle(clearChart)
+          }}
+        />
+      )}
+      {dialog === "update" && updater.update && (
+        <ConfirmDialog
+          title={`Install version ${updater.update.version}?`}
+          action="Install"
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            void updater.install()
           }}
         />
       )}

@@ -495,7 +495,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     let headers = [
         "t (s)",
         "Time",
-        "Detector value",
+        "Raw signal",
         "CO{2} (ppmv)",
         "Δt (s)",
         "C − baseline (ppmv)",

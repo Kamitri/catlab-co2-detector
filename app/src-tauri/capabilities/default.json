@@ -29,6 +29,8 @@
           "url": "mailto:*"
         }
       ]
-    }
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }
