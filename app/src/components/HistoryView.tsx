@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { Chart, type ChartTrace, type DragMode } from "@/components/Chart"
 import { ChartControls } from "@/components/ChartControls"
+import { DataEditor } from "@/components/DataEditor"
 import { ConfirmDialog } from "@/components/RunDialogs"
 import { RunFields } from "@/components/RunForm"
 import { Badge } from "@/components/ui/badge"
@@ -14,8 +15,8 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useChartView } from "@/hooks/useChartView"
 import { useRunForm } from "@/hooks/useRunForm"
-import { api, type Marker, type Measurements, type Run, type RunResult } from "@/lib/api"
-import { GAP_THRESHOLD_MS, runSeries, withGaps } from "@/lib/data"
+import { api, type Marker, type Run, type RunResult } from "@/lib/api"
+import { GAP_THRESHOLD_MS, type Series, withGaps } from "@/lib/data"
 import { formatDateTime, formatDuration, formatInteger, formatNumber } from "@/lib/format"
 import { toParameters } from "@/lib/runForm"
 import { useDarkMode } from "@/hooks/useTheme"
@@ -25,8 +26,9 @@ import { cn } from "@/lib/utils"
 
 const STATUS_LABELS = { running: "Running", finished: "Finished", aborted: "Aborted" }
 
-interface RunData {
-  measurements: Measurements
+/** Chart data of run: elapsed time (s) and CO₂ (ppm), from edited data when saved. */
+interface ChartData {
+  series: Series
   markers: Marker[]
 }
 
@@ -72,6 +74,7 @@ function RunDetail({
 }) {
   const form = useRunForm(run.parameters)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editData, setEditData] = useState(false)
   const [busy, setBusy] = useState(false)
   const blankRuns = runs.filter((candidate) => candidate.id !== run.id && candidate.status !== "running")
   const dirty = JSON.stringify(toParameters(form.values)) !== JSON.stringify(run.parameters)
@@ -96,7 +99,7 @@ function RunDetail({
     <ScrollArea className="h-full">
       <div className="space-y-4 p-4">
         <RunFields form={form} blankRuns={blankRuns} showDelay showValidation columns={1} />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button disabled={!dirty || form.errors.size > 0} onClick={() => void save()}>
             Save
           </Button>
@@ -108,6 +111,9 @@ function RunDetail({
               Show in folder
             </Button>
           )}
+          <Button variant="outline" disabled={run.status === "running"} onClick={() => setEditData(true)}>
+            Edit data
+          </Button>
           <Button
             variant="destructive"
             className="ml-auto"
@@ -120,6 +126,16 @@ function RunDetail({
         <Separator />
         {result && <ResultTable result={result} />}
       </div>
+      {editData && (
+        <DataEditor
+          run={run}
+          onClose={() => setEditData(false)}
+          onSaved={() => {
+            setEditData(false)
+            onSaved()
+          }}
+        />
+      )}
       {confirmDelete && (
         <ConfirmDialog
           title="Delete run?"
@@ -145,7 +161,7 @@ function RunDetail({
 export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   const [runs, setRuns] = useState<Run[]>([])
   const [results, setResults] = useState<Record<number, RunResult>>({})
-  const [data, setData] = useState<Record<number, RunData>>({})
+  const [data, setData] = useState<Record<number, ChartData>>({})
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [focused, setFocused] = useState<number | null>(null)
@@ -173,8 +189,8 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
     if (missing.length === 0) return
     void Promise.all(
       missing.map(async (run) => {
-        const measurements = await api.getMeasurements(run.startedAt, run.finishedAt ?? Date.now())
-        return [run.id, { measurements, markers: await api.getMarkers(run.id) }] as const
+        const runData = await api.getRunData(run.id)
+        return [run.id, { series: { x: runData.times, y: runData.values }, markers: await api.getMarkers(run.id) }] as const
       }),
     ).then((entries) => setData((current) => ({ ...current, ...Object.fromEntries(entries) })))
   }, [shown, data])
@@ -186,7 +202,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
       shown
         .filter((run) => data[run.id])
         .map((run, index) => {
-          const series = runSeries(run, data[run.id].measurements)
+          const series = data[run.id].series
           const result = results[run.id]
           if (!overlay) {
             return {
@@ -231,7 +247,6 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
         }))
       : []
 
-  // Checked runs to one workbook, oldest first
   // Newest first: blank run is deleted after runs that use it
   async function deleteChecked() {
     const selected = runs.filter((run) => checked.has(run.id)).sort((first, second) => second.startedAt - first.startedAt)
@@ -247,6 +262,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
     await load()
   }
 
+  // Checked runs to one workbook, oldest first
   async function exportChecked() {
     const selected = runs.filter((run) => checked.has(run.id)).sort((first, second) => first.startedAt - second.startedAt)
     const date = new Date().toLocaleDateString("en-CA")
@@ -303,6 +319,11 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
                   <Badge variant={run.status === "aborted" ? "destructive" : run.status === "running" ? "default" : "secondary"}>
                     {STATUS_LABELS[run.status]}
                   </Badge>
+                  {run.edited && (
+                    <Badge variant="outline" className="ml-1.5">
+                      Edited
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatDuration(((run.finishedAt ?? Date.now()) - run.startedAt) / 1000)}

@@ -9,8 +9,8 @@ use rust_xlsxwriter::{
     Chart, ChartType, Color, Format, FormatAlign, FormatBorder, FormatScript, Formula, Workbook, Worksheet, XlsxError,
 };
 
-use crate::calculation::{RunResult, Series, soap_flow_rate};
-use crate::model::{Measurements, Run, RunStatus};
+use crate::calculation::{RunData, RunResult, soap_flow_rate};
+use crate::model::{Run, RunStatus};
 
 /// Converts Unix time (ms) to Excel serial date in local time.
 fn excel_date(timestamp: i64) -> f64 {
@@ -106,7 +106,7 @@ fn sheet_name(run: &Run, used: &mut HashSet<String>) -> String {
 
 pub struct ExportInput<'a> {
     pub run: &'a Run,
-    pub measurements: &'a Measurements,
+    pub data: &'a RunData,
     pub result: &'a RunResult,
     pub blank_label: Option<String>,
     /// Decimal places of sorbent mass and soap film volume, from precision in Settings.
@@ -233,7 +233,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     let run = input.run;
     let parameters = &run.parameters;
     let result = input.result;
-    let series = Series::from_measurements(run, input.measurements);
+    let series = &input.data.series;
     let row_count = series.times.len() as u32;
     let last_row = row_count + 1;
     let styles = Styles::new();
@@ -278,6 +278,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         RunStatus::Finished => "Finished",
         RunStatus::Aborted => "Aborted",
     };
+    let status = if input.data.edited { format!("{status}, data edited") } else { status.to_string() };
     sheet.write_string_with_format(1, BLOCK_GROUP, "Sample:", &styles.box_label)?;
     sheet.write_string_with_format(1, BLOCK_LABEL, &parameters.sample, &styles.box_value)?;
     sheet.write_string_with_format(2, BLOCK_GROUP, "Date:", &styles.box_label)?;
@@ -285,7 +286,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     sheet.write_string_with_format(3, BLOCK_GROUP, "Operator:", &styles.box_label)?;
     sheet.write_string_with_format(3, BLOCK_LABEL, &parameters.operator, &styles.box_value)?;
     sheet.write_string_with_format(4, BLOCK_GROUP, "Status:", &styles.box_label)?;
-    sheet.write_string_with_format(4, BLOCK_LABEL, status, &styles.box_value)?;
+    sheet.write_string_with_format(4, BLOCK_LABEL, &status, &styles.box_value)?;
 
     // ======[ Soap Film Times ]======
     let header_row = TABLE_ROW - 1;
@@ -509,14 +510,25 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         let time = series.times[index];
         let value = series.concentrations[index];
         sheet.write_number_with_format(row, 0, time, &styles.data)?;
-        sheet.write_number_with_format(row, 1, excel_date(input.measurements.timestamps[index]), &styles.data_clock)?;
-        sheet.write_number_with_format(row, 2, f64::from(input.measurements.counts[index]), &styles.data)?;
-        sheet.write_formula_with_format(
-            row,
-            3,
-            cached(Formula::new(format!("=ConversionScale*EXP(ConversionExponent*C{excel_row})")), value),
-            &concentration_format,
-        )?;
+        let clock = run.started_at + (time * 1000.0).round() as i64;
+        sheet.write_number_with_format(row, 1, excel_date(clock), &styles.data_clock)?;
+        match &input.data.counts {
+            // Measured data: CO2 is live formula of detector count N
+            Some(counts) => {
+                sheet.write_number_with_format(row, 2, f64::from(counts[index]), &styles.data)?;
+                sheet.write_formula_with_format(
+                    row,
+                    3,
+                    cached(Formula::new(format!("=ConversionScale*EXP(ConversionExponent*C{excel_row})")), value),
+                    &concentration_format,
+                )?;
+            }
+            // Edited data has CO2 values without detector count
+            None => {
+                sheet.write_blank(row, 2, &styles.data)?;
+                sheet.write_number_with_format(row, 3, value, &concentration_format)?;
+            }
+        }
         let previous_reference = if row == 1 { "0".to_string() } else { format!("A{}", excel_row - 1) };
         let interval = if time > parameters.delay_s { time - f64::max(previous_time, parameters.delay_s) } else { 0.0 };
         sheet.write_formula_with_format(
@@ -599,8 +611,9 @@ pub fn write_workbook(path: &Path, inputs: &[ExportInput]) -> Result<(), XlsxErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calculation::Series;
     use crate::calculation::calculate;
-    use crate::model::RunParameters;
+    use crate::model::{Measurements, RunParameters};
 
     #[test]
     fn file_name_is_sanitized() {
@@ -612,6 +625,7 @@ mod tests {
             conversion_scale: 1785.9,
             conversion_exponent: 0.0111,
             export_path: None,
+            edited: false,
             parameters: RunParameters { sample: "K/ZY: II".into(), ..Default::default() },
         };
         assert!(file_name("{sample}_{id}", &run).starts_with("K_ZY_ II_7"));
@@ -644,6 +658,7 @@ mod tests {
             conversion_scale: 1785.9,
             conversion_exponent: 0.0111,
             export_path: None,
+            edited: false,
             parameters: RunParameters {
                 sample: "Test".into(),
                 flow_rate_ml_min: 60.0,
@@ -659,12 +674,17 @@ mod tests {
             timestamps: (1..=200).map(|second| run.started_at + second * 1000).collect(),
             counts: (1..=200).map(|second| if second <= 100 { 30 } else { 260 }).collect(),
         };
-        let series = Series::from_measurements(&run, &measurements);
-        let result = calculate(&run, &series, 0.0);
+        let measured = RunData::measured(&run, &measurements);
+        let result = calculate(&run, &measured.series, 0.0);
+        // Edited data: CO2 values without detector counts
+        let edited = RunData::edited(Series {
+            times: measured.series.times.clone(),
+            concentrations: measured.series.concentrations.iter().map(|value| value + 10.0).collect(),
+        });
         let path = directory.path().join("test.xlsx");
-        let input = || ExportInput {
+        let input = |data| ExportInput {
             run: &run,
-            measurements: &measurements,
+            data,
             result: &result,
             blank_label: None,
             mass_decimals: 4,
@@ -672,7 +692,7 @@ mod tests {
             cached_results: true,
         };
         // Two runs with same date and sample get separate sheet names
-        write_workbook(&path, &[input(), input()]).unwrap();
+        write_workbook(&path, &[input(&measured), input(&edited)]).unwrap();
         assert!(path.metadata().unwrap().len() > 1000);
     }
 }

@@ -379,6 +379,26 @@ def main(
         wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM runs") == 1, 5, "Run not deleted")
         print("Run deleted in History")
 
+        # Data editor: typing in cell replaces value; Save keeps measurements and stores edited data
+        driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
+        button(driver, "Edit data").click()
+        wait_until(lambda: driver.find_elements(By.CSS_SELECTOR, "[data-row]"), 5, "Data not shown")
+        driver.find_element(By.CSS_SELECTOR, "[aria-label='Data']").send_keys("50000", Keys.ENTER)
+        shot(driver, "16-data-editor")
+        dialog_button(driver, "Save").click()
+        edited_rows = "SELECT COUNT(*) FROM run_data"
+        wait_until(lambda: query_count(work, edited_rows) > 0, 5, "Edited data not saved")
+        first_value = query_count(work, "SELECT value_ppm FROM run_data WHERE position = 0")
+        assert first_value == 50000, first_value
+        edited_badge = "return document.body.textContent.includes('Edited')"
+        wait_until(lambda: driver.execute_script(edited_badge), 5, "Edited badge not shown")
+        # Restore original removes edited data after confirmation
+        button(driver, "Edit data").click()
+        dialog_button(driver, "Restore original").click()
+        driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Restore original']").click()
+        wait_until(lambda: query_count(work, edited_rows) == 0, 5, "Edited data not removed")
+        print("Data editor: edit, Save, Restore original")
+
         # Reset to defaults fills form with default values; Cancel keeps saved settings
         button(driver, "Settings").click()
         dialog_button(driver, "Reset to defaults").click()

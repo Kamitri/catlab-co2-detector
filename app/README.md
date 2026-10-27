@@ -63,6 +63,6 @@ CO2_EXTRA_PORTS=/tmp/co2-app npm run tauri dev
 
 ## Windows build
 
-The GitHub Actions workflow `.github/workflows/build.yml` runs the tests and builds the Windows installers (`.msi` and `.exe`). Download them from the `co2-monitor-windows` artifact of the workflow run.
+The GitHub Actions workflow `.github/workflows/build.yml` runs the tests and builds the Windows installers (`.msi` and `.exe`) as the `co2-monitor-windows` artifact. A tag `v<version>` also attaches the installers to a release of that tag.
 
 To build on a Windows computer: install Node.js and Rust, then run `npm install` and `npx tauri build`.

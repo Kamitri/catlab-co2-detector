@@ -4,6 +4,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::calculation::Series;
 use crate::model::{Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
@@ -48,6 +49,13 @@ impl Database {
             CREATE TABLE IF NOT EXISTS settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS run_data (
+                run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                time_s REAL NOT NULL,
+                value_ppm REAL NOT NULL,
+                PRIMARY KEY (run_id, position)
             );
             CREATE TABLE IF NOT EXISTS sample (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -127,6 +135,7 @@ impl Database {
     pub fn delete_run(&self, id: i64) -> DbResult<()> {
         let transaction = self.connection.unchecked_transaction()?;
         transaction.execute("DELETE FROM markers WHERE run_id = ?1", params![id])?;
+        transaction.execute("DELETE FROM run_data WHERE run_id = ?1", params![id])?;
         transaction.execute("DELETE FROM runs WHERE id = ?1", params![id])?;
         transaction.commit()
     }
@@ -151,11 +160,47 @@ impl Database {
             conversion_exponent: row.get(5)?,
             export_path: row.get(6)?,
             parameters: serde_json::from_str(&parameters).unwrap_or_default(),
+            edited: row.get(8)?,
         })
     }
 
-    const RUN_COLUMNS: &'static str =
-        "id, status, started_at, finished_at, conversion_scale, conversion_exponent, export_path, parameters";
+    const RUN_COLUMNS: &'static str = "id, status, started_at, finished_at, conversion_scale, conversion_exponent, \
+        export_path, parameters, EXISTS (SELECT 1 FROM run_data WHERE run_data.run_id = runs.id)";
+
+    /// Edited data of run, or None when run uses measurements.
+    pub fn run_data(&self, run_id: i64) -> DbResult<Option<Series>> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT time_s, value_ppm FROM run_data WHERE run_id = ?1 ORDER BY position")?;
+        let rows = statement.query_map(params![run_id], |row| Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?)))?;
+        let mut series = Series::default();
+        for row in rows {
+            let (time, value) = row?;
+            series.times.push(time);
+            series.concentrations.push(value);
+        }
+        Ok(if series.times.is_empty() { None } else { Some(series) })
+    }
+
+    /// Replaces edited data of run.
+    pub fn save_run_data(&self, run_id: i64, series: &Series) -> DbResult<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute("DELETE FROM run_data WHERE run_id = ?1", params![run_id])?;
+        {
+            let mut statement = transaction
+                .prepare("INSERT INTO run_data (run_id, position, time_s, value_ppm) VALUES (?1, ?2, ?3, ?4)")?;
+            for (position, (time, value)) in series.times.iter().zip(&series.concentrations).enumerate() {
+                statement.execute(params![run_id, position as i64, time, value])?;
+            }
+        }
+        transaction.commit()
+    }
+
+    /// Removes edited data; run uses measurements again.
+    pub fn delete_run_data(&self, run_id: i64) -> DbResult<()> {
+        self.connection.execute("DELETE FROM run_data WHERE run_id = ?1", params![run_id])?;
+        Ok(())
+    }
 
     pub fn run(&self, id: i64) -> DbResult<Option<Run>> {
         self.connection
@@ -305,6 +350,21 @@ mod tests {
         }
         assert_eq!(database.delete_measurements_outside_runs(1000, 3000).unwrap(), 1);
         assert_eq!(database.measurements(0, 4000).unwrap().timestamps, vec![500, 1500, 3500]);
+    }
+
+    #[test]
+    fn edited_data_replaces_and_restores() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(&directory.path().join("test.db")).unwrap();
+        let id = database.insert_run(1000, 1785.9, 0.0111, &RunParameters::default()).unwrap();
+        assert!(database.run_data(id).unwrap().is_none());
+        assert!(!database.run(id).unwrap().unwrap().edited);
+        let series = Series { times: vec![1.0, 2.0], concentrations: vec![2500.0, 2600.0] };
+        database.save_run_data(id, &series).unwrap();
+        assert_eq!(database.run_data(id).unwrap().unwrap().concentrations, vec![2500.0, 2600.0]);
+        assert!(database.run(id).unwrap().unwrap().edited);
+        database.delete_run_data(id).unwrap();
+        assert!(database.run_data(id).unwrap().is_none());
     }
 
     #[test]

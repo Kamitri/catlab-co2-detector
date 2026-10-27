@@ -15,7 +15,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 use acquisition::{Sink, now_ms};
-use calculation::{RunResult, Series, calculate, run_stoichiometric_time};
+use calculation::{RunData, RunResult, Series, calculate, run_stoichiometric_time};
 use db::Database;
 use model::{Connection, Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
 
@@ -235,24 +235,86 @@ fn get_markers(state: State<AppState>, id: i64) -> CommandResult<Vec<Marker>> {
     lock(&state.database).markers(id).map_err(error_text)
 }
 
-fn run_measurements(database: &Database, run: &Run) -> Result<Measurements, rusqlite::Error> {
-    database.measurements(run.started_at, run.finished_at.unwrap_or_else(now_ms))
+/// Data of run: edited data when saved, otherwise measurements in time interval of run.
+fn load_run_data(database: &Database, run: &Run) -> Result<RunData, rusqlite::Error> {
+    if let Some(series) = database.run_data(run.id)? {
+        return Ok(RunData::edited(series));
+    }
+    let measurements = database.measurements(run.started_at, run.finished_at.unwrap_or_else(now_ms))?;
+    Ok(RunData::measured(run, &measurements))
 }
 
-/// Calculates result of run; returns result, label of blank run if used, and measurements.
-fn run_result(database: &Database, run: &Run) -> Result<(RunResult, Option<String>, Measurements), String> {
-    let measurements = run_measurements(database, run).map_err(error_text)?;
-    let series = Series::from_measurements(run, &measurements);
+/// Calculates result of run; returns result, label of blank run if used, and data of run.
+fn run_result(database: &Database, run: &Run) -> Result<(RunResult, Option<String>, RunData), String> {
+    let data = load_run_data(database, run).map_err(error_text)?;
     let mut blank_time_s = 0.0;
     let mut blank_label = None;
     if let Some(blank) =
         run.parameters.blank_run_id.map(|id| database.run(id)).transpose().map_err(error_text)?.flatten()
     {
-        let blank_measurements = run_measurements(database, &blank).map_err(error_text)?;
-        blank_time_s = run_stoichiometric_time(&blank, &Series::from_measurements(&blank, &blank_measurements));
+        let blank_data = load_run_data(database, &blank).map_err(error_text)?;
+        blank_time_s = run_stoichiometric_time(&blank, &blank_data.series);
         blank_label = Some(format!("Blank run: {} (#{})", blank.parameters.sample, blank.id));
     }
-    Ok((calculate(run, &series, blank_time_s), blank_label, measurements))
+    Ok((calculate(run, &data.series, blank_time_s), blank_label, data))
+}
+
+/// Data of run for History and data editor.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RunDataView {
+    times: Vec<f64>,
+    values: Vec<f64>,
+    edited: bool,
+}
+
+#[tauri::command]
+fn get_run_data(state: State<AppState>, id: i64) -> CommandResult<RunDataView> {
+    let database = lock(&state.database);
+    let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
+    let data = load_run_data(&database, &run).map_err(error_text)?;
+    Ok(RunDataView { times: data.series.times, values: data.series.concentrations, edited: data.edited })
+}
+
+/// Saves edited data of finished or aborted run, sorted by time; measurements stay unchanged.
+#[tauri::command]
+fn save_run_data(
+    app: AppHandle,
+    state: State<AppState>,
+    id: i64,
+    times: Vec<f64>,
+    values: Vec<f64>,
+) -> CommandResult<()> {
+    if times.len() != values.len() || times.is_empty() {
+        return Err("Data has no rows or rows without value".into());
+    }
+    if times.iter().chain(&values).any(|number| !number.is_finite()) {
+        return Err("Data has value that is not a number".into());
+    }
+    let database = lock(&state.database);
+    let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
+    if run.status == RunStatus::Running {
+        return Err("Run in progress".into());
+    }
+    let mut rows: Vec<(f64, f64)> = times.into_iter().zip(values).collect();
+    rows.sort_by(|first, second| first.0.total_cmp(&second.0));
+    let series = Series {
+        times: rows.iter().map(|row| row.0).collect(),
+        concentrations: rows.iter().map(|row| row.1).collect(),
+    };
+    database.save_run_data(id, &series).map_err(error_text)?;
+    log(&app, &database, "info", &format!("Data edited: {}", run.parameters.sample));
+    Ok(())
+}
+
+/// Removes edited data; run uses measurements again.
+#[tauri::command]
+fn restore_run_data(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<()> {
+    let database = lock(&state.database);
+    let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
+    database.delete_run_data(id).map_err(error_text)?;
+    log(&app, &database, "info", &format!("Data restored: {}", run.parameters.sample));
+    Ok(())
 }
 
 #[tauri::command]
@@ -266,7 +328,7 @@ fn get_run_result(state: State<AppState>, id: i64) -> CommandResult<RunResult> {
 struct ExportJob {
     path: PathBuf,
     run: Run,
-    measurements: Measurements,
+    data: RunData,
     result: RunResult,
     blank_label: Option<String>,
     mass_decimals: usize,
@@ -294,11 +356,11 @@ fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResu
     let settings = database.settings().map_err(error_text)?;
     let folder = export_folder_path(app, database)?;
     let path = export::unique_path(&folder, &export::file_name(&settings.file_name_pattern, &run));
-    let (result, blank_label, measurements) = run_result(database, &run)?;
+    let (result, blank_label, data) = run_result(database, &run)?;
     Ok(ExportJob {
         path,
         run,
-        measurements,
+        data,
         result,
         blank_label,
         mass_decimals: settings.mass_decimals(),
@@ -310,7 +372,7 @@ fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResu
 fn write_export(app: &AppHandle, state: &AppState, job: ExportJob) -> CommandResult<String> {
     let input = export::ExportInput {
         run: &job.run,
-        measurements: &job.measurements,
+        data: &job.data,
         result: &job.result,
         blank_label: job.blank_label.clone(),
         mass_decimals: job.mass_decimals,
@@ -349,11 +411,11 @@ fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: Stri
         let mut jobs = Vec::new();
         for id in ids {
             let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
-            let (result, blank_label, measurements) = run_result(&database, &run)?;
+            let (result, blank_label, data) = run_result(&database, &run)?;
             jobs.push(ExportJob {
                 path: PathBuf::from(&path),
                 run,
-                measurements,
+                data,
                 result,
                 blank_label,
                 mass_decimals: settings.mass_decimals(),
@@ -366,7 +428,7 @@ fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: Stri
         .iter()
         .map(|job| export::ExportInput {
             run: &job.run,
-            measurements: &job.measurements,
+            data: &job.data,
             result: &job.result,
             blank_label: job.blank_label.clone(),
             mass_decimals: job.mass_decimals,
@@ -571,6 +633,9 @@ pub fn run() {
             add_marker,
             get_markers,
             get_run_result,
+            get_run_data,
+            save_run_data,
+            restore_run_data,
             export_run,
             export_runs,
             export_folder,

@@ -1,7 +1,7 @@
 //! Exports run from legacy KQ file without cached formula results, forcing recalculation, and prints Rust results as JSON.
 //! Usage: cargo run --example export_check -- <legacy.txt> <output.xlsx> <delay_s> <blank_time_s>
 
-use co2_monitor_lib::calculation::{Series, calculate};
+use co2_monitor_lib::calculation::{RunData, Series, calculate};
 use co2_monitor_lib::export::{ExportInput, write_workbook};
 use co2_monitor_lib::model::{Measurements, Run, RunParameters, RunStatus};
 
@@ -37,6 +37,7 @@ fn main() {
         conversion_scale: 1785.9,
         conversion_exponent: 0.0111,
         export_path: None,
+        edited: false,
         parameters: RunParameters {
             sample: "Check".into(),
             soap_times_s: vec![2.62, 2.75, 2.81, 2.68, 2.9, 2.71, 2.77, 2.66, 2.85, 2.73],
@@ -55,7 +56,7 @@ fn main() {
         std::path::Path::new(&arguments[2]),
         &[ExportInput {
             run: &run,
-            measurements: &measurements,
+            data: &RunData::measured(&run, &measurements),
             result: &result,
             blank_label: None,
             mass_decimals: 4,
