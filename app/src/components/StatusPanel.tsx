@@ -61,7 +61,7 @@ export function StatusPanel({
           </span>
           <span className="text-sm text-muted-foreground">ppm</span>
         </div>
-        <Row label="Detector value" value={latest ? latest.count : "–"} />
+        <Row label="Raw signal" value={latest ? latest.count : "–"} />
         <Row label="Updated" value={latest ? formatClock(latest.timestamp) : "–"} />
       </Section>
       <Separator />
