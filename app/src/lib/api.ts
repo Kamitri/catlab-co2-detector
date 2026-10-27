@@ -45,6 +45,15 @@ export interface Run {
   conversionExponent: number
   exportPath: string | null
   parameters: RunParameters
+  /** Data was edited; edited data replaces measurements in calculation and export. */
+  edited: boolean
+}
+
+/** Data of run: elapsed time (s) and CO₂ (ppm). */
+export interface RunData {
+  times: number[]
+  values: number[]
+  edited: boolean
 }
 
 export interface Marker {
@@ -116,6 +125,11 @@ export const api = {
   addMarker: (id: number, label: string) => invoke<Marker>("add_marker", { id, label }),
   getMarkers: (id: number) => invoke<Marker[]>("get_markers", { id }),
   getRunResult: (id: number) => invoke<RunResult>("get_run_result", { id }),
+  getRunData: (id: number) => invoke<RunData>("get_run_data", { id }),
+  /** Saves edited data; measurements stay unchanged. */
+  saveRunData: (id: number, times: number[], values: number[]) => invoke<void>("save_run_data", { id, times, values }),
+  /** Removes edited data; run uses measurements again. */
+  restoreRunData: (id: number) => invoke<void>("restore_run_data", { id }),
   exportRun: (id: number) => invoke<string>("export_run", { id }),
   /** Exports runs to one workbook, one sheet per run. */
   exportRuns: (ids: number[], path: string) => invoke<string>("export_runs", { ids, path }),

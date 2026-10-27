@@ -38,6 +38,29 @@ impl Series {
     }
 }
 
+/// Data of run for calculation and export. Detector counts exist only for measured data; edited data
+/// has CO2 values only.
+#[derive(Debug, Clone, Default)]
+pub struct RunData {
+    pub series: Series,
+    pub counts: Option<Vec<u32>>,
+    pub edited: bool,
+}
+
+impl RunData {
+    pub fn measured(run: &Run, measurements: &Measurements) -> Self {
+        Self {
+            series: Series::from_measurements(run, measurements),
+            counts: Some(measurements.counts.clone()),
+            edited: false,
+        }
+    }
+
+    pub fn edited(series: Series) -> Self {
+        Self { series, counts: None, edited: true }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RunResult {
@@ -196,6 +219,7 @@ mod tests {
             conversion_scale: 1785.9,
             conversion_exponent: 0.0111,
             export_path: None,
+            edited: false,
             parameters,
         }
     }

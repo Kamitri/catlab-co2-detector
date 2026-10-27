@@ -136,6 +136,9 @@ pub struct Run {
     pub conversion_exponent: f64,
     pub export_path: Option<String>,
     pub parameters: RunParameters,
+    /// Data of run was edited; edited data replaces measurements in calculation and export.
+    #[serde(default)]
+    pub edited: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
