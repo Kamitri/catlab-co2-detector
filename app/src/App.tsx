@@ -243,7 +243,7 @@ export default function App() {
       {dialog === "close" && (
         <ConfirmDialog
           title="Do you want to close the app?"
-          description="Data will be recorded while the app is closed."
+          description="Data will be recorded while the app is closed. To fully close the app, exit from the system tray."
           action="Close"
           onCancel={() => setDialog(null)}
           onConfirm={() => {

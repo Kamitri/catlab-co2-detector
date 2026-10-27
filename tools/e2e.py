@@ -227,6 +227,8 @@ def main(
         shot(driver, "03-sample")
         dialog_button(driver, "Save").click()
         wait_until(lambda: button(driver, "Start").is_enabled(), 5, "Start not enabled after sample saved")
+        # Replay restarts at first sample: run starts before breakthrough, independent of time taken by steps above
+        os.kill(simulator.pid, signal.SIGUSR1)
         button(driver, "Start").click()
         wait_text(driver, "Run started: Na-ZY", 2)
         wait_until(lambda: co2_value(driver) > 15000, message="Breakthrough not reached")
@@ -273,7 +275,7 @@ def main(
         button(driver, "Start").click()
         wait_text(driver, "Run started: Crash test")
         close_window("CATlab CO₂ Monitor")
-        wait_text(driver, "Data will be recorded while the app is closed.", 5)
+        wait_text(driver, "Data will be recorded while the app is closed. To fully close the app, exit from the system tray.", 5)
         shot(driver, "08c-close")
         # Click from script after return: WebKit WebDriver waits for hidden window to finish click
         driver.execute_script("setTimeout(() => arguments[0].click(), 100)", dialog_button(driver, "Close"))
@@ -462,6 +464,14 @@ def main(
         assert driver.execute_script(dark), "Cancel changed theme"
         print("Settings: dark theme, Reset to defaults")
         driver.quit()
+    except Exception:
+        # Screen and messages at failure, for diagnosis
+        try:
+            shot(driver, "failure")
+            print("Messages:", driver.execute_script("return document.body.textContent"))
+        except Exception as error:
+            print(f"Failure screenshot not saved: {error}")
+        raise
     finally:
         for process in reversed(processes):
             process.terminate()
