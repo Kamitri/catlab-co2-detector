@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="sphere" cx="0.36" cy="0.30" r="0.80">
+      <stop offset="0" stop-color="#3fd0cf"/>
+      <stop offset="0.55" stop-color="#0c8f95"/>
+      <stop offset="1" stop-color="#04545b"/>
+    </radialGradient>
+    <radialGradient id="small" cx="0.38" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#7fe3e0"/>
+      <stop offset="1" stop-color="#0a7c83"/>
+    </radialGradient>
+  </defs>
+  <!-- Small bubbles rising -->
+  <circle cx="420" cy="104" r="34" fill="url(#small)"/>
+  <circle cx="462" cy="34" r="17" fill="url(#small)"/>
+  <!-- Bubble with CO2 trapped inside -->
+  <circle cx="238" cy="282" r="210" fill="url(#sphere)"/>
+  <circle cx="238" cy="282" r="210" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="8"/>
+  <path d="M 104 204 A 160 160 0 0 1 200 112" fill="none" stroke="#ffffff" stroke-opacity="0.75" stroke-width="18" stroke-linecap="round"/>
+  <text x="220" y="322" text-anchor="middle" font-family="Geist, sans-serif" font-weight="800" font-size="136" fill="#ffffff" letter-spacing="-4">CO</text>
+  <text x="336" y="352" text-anchor="middle" font-family="Geist, sans-serif" font-weight="800" font-size="76" fill="#ffffff">2</text>
+</svg>

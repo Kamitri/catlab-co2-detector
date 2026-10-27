@@ -30,10 +30,12 @@ export function StatusPanel({
   state,
   now,
   onDeleteMessage,
+  onClearMessages,
 }: {
   state: MonitorState
   now: number
   onDeleteMessage: (id: number) => void
+  onClearMessages: () => void
 }) {
   const { connection, latest, activeRun, settings, measurements, equilibriumAt, lastRun, lastResult, messages } = state
   const scale = activeRun?.conversionScale ?? settings?.conversionScale ?? 1785.9
@@ -59,7 +61,7 @@ export function StatusPanel({
           </span>
           <span className="text-sm text-muted-foreground">ppm</span>
         </div>
-        <Row label="N" value={latest ? latest.count : "–"} />
+        <Row label="Detector value" value={latest ? latest.count : "–"} />
         <Row label="Updated" value={latest ? formatClock(latest.timestamp) : "–"} />
       </Section>
       <Separator />
@@ -96,7 +98,7 @@ export function StatusPanel({
         </Section>
       )}
       <Separator />
-      <MessageLog messages={messages} onDelete={onDeleteMessage} />
+      <MessageLog messages={messages} onDelete={onDeleteMessage} onClear={onClearMessages} />
       <Separator />
       <Section title="Connection">
         <div className="flex items-center gap-2 text-sm">

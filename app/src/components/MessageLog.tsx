@@ -1,6 +1,8 @@
 import { CircleX, Info, TriangleAlert, X } from "lucide-react"
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react"
 
+import { ConfirmDialog } from "@/components/RunDialogs"
+import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Message, MessageLevel } from "@/lib/api"
 import { formatClock } from "@/lib/format"
@@ -37,8 +39,17 @@ function visible(message: Message, filter: Filter): boolean {
   return true
 }
 
-export function MessageLog({ messages, onDelete }: { messages: Message[]; onDelete: (id: number) => void }) {
+export function MessageLog({
+  messages,
+  onDelete,
+  onClear,
+}: {
+  messages: Message[]
+  onDelete: (id: number) => void
+  onClear: () => void
+}) {
   const [filter, setFilter] = useState<Filter>("all")
+  const [confirmClear, setConfirmClear] = useState(false)
   const viewport = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const shown = messages.filter((message) => visible(message, filter))
@@ -57,7 +68,16 @@ export function MessageLog({ messages, onDelete }: { messages: Message[]; onDele
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
-        <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Messages</h3>
+        <h3 className="mr-auto text-xs font-medium tracking-wide text-muted-foreground uppercase">Messages</h3>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-xs text-destructive hover:text-destructive"
+          disabled={messages.length === 0}
+          onClick={() => setConfirmClear(true)}
+        >
+          Clear
+        </Button>
         <Select value={filter} onValueChange={(value) => setFilter(value as Filter)}>
           <SelectTrigger size="sm" className="w-auto gap-1 text-xs">
             <SelectValue />
@@ -116,6 +136,19 @@ export function MessageLog({ messages, onDelete }: { messages: Message[]; onDele
           })}
         </ol>
       </div>
+      {confirmClear && (
+        <ConfirmDialog
+          title="Are you sure?"
+          description="This action will delete ALL messages. This action is irreversible."
+          action="Clear"
+          destructive
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={() => {
+            setConfirmClear(false)
+            onClear()
+          }}
+        />
+      )}
     </div>
   )
 }

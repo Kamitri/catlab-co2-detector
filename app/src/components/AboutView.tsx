@@ -38,12 +38,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function AboutView() {
   const [version, setVersion] = useState("")
   const [tauriVersion, setTauriVersion] = useState("")
-  const [dataFolder, setDataFolder] = useState("")
+  // Data folder holds exported xlsx files; cache folder holds database of application
+  const [exportFolder, setExportFolder] = useState("")
+  const [cacheFolder, setCacheFolder] = useState("")
 
   useEffect(() => {
     void getVersion().then(setVersion)
     void getTauriVersion().then(setTauriVersion)
-    void api.dataFolder().then(setDataFolder)
+    void api.exportFolder().then(setExportFolder)
+    void api.dataFolder().then(setCacheFolder)
   }, [])
 
   return (
@@ -70,9 +73,19 @@ export function AboutView() {
           <Row label="Tauri">{tauriVersion}</Row>
           <Row label="Data folder">
             <span className="flex items-center gap-2">
-              <span className="truncate font-mono text-xs">{dataFolder}</span>
-              {dataFolder && (
-                <Button size="xs" variant="outline" onClick={() => void openPath(dataFolder)}>
+              <span className="truncate font-mono text-xs">{exportFolder}</span>
+              {exportFolder && (
+                <Button size="xs" variant="outline" onClick={() => void api.openExportFolder()}>
+                  Open
+                </Button>
+              )}
+            </span>
+          </Row>
+          <Row label="Cache folder">
+            <span className="flex items-center gap-2">
+              <span className="truncate font-mono text-xs">{cacheFolder}</span>
+              {cacheFolder && (
+                <Button size="xs" variant="outline" onClick={() => void openPath(cacheFolder)}>
                   Open
                 </Button>
               )}

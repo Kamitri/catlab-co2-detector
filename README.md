@@ -12,7 +12,7 @@ Download the Windows installer from [Releases](../../releases). Builds of other 
 2. **Start**: switch the gas to the sample and press Start.
 3. **Finish**: after "Equilibrium reached", enter the soap film times. The run is exported to xlsx.
 
-History shows, edits, exports and deletes runs.
+History shows, edits, reorders, exports and deletes runs.
 
 ## Development
 

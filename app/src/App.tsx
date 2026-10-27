@@ -41,7 +41,8 @@ function startDefaults(previous: Run | undefined, settings: Settings): RunParame
 }
 
 export default function App() {
-  const { state, setSettings, setSample, dismissRecovery, applyRun, clearChart, deleteMessage } = useMonitor()
+  const { state, setSettings, setSample, dismissRecovery, applyRun, clearChart, deleteMessage, clearMessages } =
+    useMonitor()
   const [view, setView] = useState<View>("live")
   const [dialog, setDialog] = useState<DialogState>(null)
   const [runs, setRuns] = useState<Run[]>([])
@@ -129,7 +130,12 @@ export default function App() {
             <AboutView />
           )}
         </main>
-        <StatusPanel state={state} now={now} onDeleteMessage={(id) => void handle(() => deleteMessage(id))} />
+        <StatusPanel
+          state={state}
+          now={now}
+          onDeleteMessage={(id) => void handle(() => deleteMessage(id))}
+          onClearMessages={() => void handle(clearMessages)}
+        />
       </div>
 
       {dialog === "sample" && settings && (

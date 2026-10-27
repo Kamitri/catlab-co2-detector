@@ -252,7 +252,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     for (column, width) in [
         (0, 9.0),
         (1, 13.0),
-        (2, 7.0),
+        (2, 10.0),
         (3, 14.0),
         (4, 9.0),
         (5, 15.0),
@@ -492,8 +492,16 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     )?;
 
     // ======[ Data ]======
-    let headers =
-        ["t (s)", "Time", "N", "CO{2} (ppmv)", "Δt (s)", "C − baseline (ppmv)", "C/C{0}", "(1 − C/C{0})·Δt (s)"];
+    let headers = [
+        "t (s)",
+        "Time",
+        "Detector value",
+        "CO{2} (ppmv)",
+        "Δt (s)",
+        "C − baseline (ppmv)",
+        "C/C{0}",
+        "(1 − C/C{0})·Δt (s)",
+    ];
     for (column, title) in headers.iter().enumerate() {
         write_label(sheet, 0, column as u16, title, &styles.data_header)?;
     }

@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS: Settings = {
   exportFolder: "",
   fileNamePattern: "{date}_{time}_{sample}",
   coWindowS: 300,
-  equilibriumBandPercent: 3,
+  equilibriumBandPercent: 6,
   conversionScale: VENDOR_SCALE,
   conversionExponent: VENDOR_EXPONENT,
   extraPorts: [],
