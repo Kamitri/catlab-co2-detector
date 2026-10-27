@@ -236,6 +236,9 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
     [shown, data, results, overlay, palette],
   )
 
+  // Shown runs and their loaded data identify chart data; count of traces alone repeats between runs
+  const dataRevision = `${shown.map((run) => `${run.id}:${data[run.id] ? 1 : 0}`).join(",")}|${overlay}`
+
   const lastTime = Math.max(
     0,
     ...traces.map((trace) => {
@@ -448,7 +451,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
               xTitle={overlay ? "Time after delay (s)" : "Time (s)"}
               yTitle={overlay ? "C/C<sub>0</sub>" : "CO<sub>2</sub> (ppm)"}
               markers={markers}
-              revision={traces.length}
+              revision={dataRevision}
               view={chartView.view}
               onViewChange={chartView.setView}
               dragMode={dragMode}

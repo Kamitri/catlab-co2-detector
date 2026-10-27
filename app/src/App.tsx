@@ -16,7 +16,17 @@ import { useUpdater } from "@/hooks/useUpdater"
 import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
 import { DEFAULT_SETTINGS, decimals } from "@/lib/settings"
 
-type DialogState = "sample" | "finish" | "marker" | "abort" | "clear" | "settings" | "exit" | "update" | null
+type DialogState =
+  | "sample"
+  | "finish"
+  | "marker"
+  | "abort"
+  | "clear"
+  | "settings"
+  | "exit"
+  | "close"
+  | "update"
+  | null
 type View = "live" | "history" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
@@ -57,6 +67,12 @@ export default function App() {
   // Exit from tray menu during run requires confirmation
   useEffect(() => {
     const unlisten = events.onExitRequested(() => setDialog("exit"))
+    return () => void unlisten.then((dispose) => dispose())
+  }, [])
+
+  // Close button of window asks before window is hidden to tray
+  useEffect(() => {
+    const unlisten = events.onCloseRequested(() => setDialog("close"))
     return () => void unlisten.then((dispose) => dispose())
   }, [])
 
@@ -221,6 +237,18 @@ export default function App() {
           onConfirm={() => {
             setDialog(null)
             void updater.install()
+          }}
+        />
+      )}
+      {dialog === "close" && (
+        <ConfirmDialog
+          title="Do you want to close the app?"
+          description="Data will be recorded while the app is closed."
+          action="Close"
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            void handle(api.hideWindow)
           }}
         />
       )}

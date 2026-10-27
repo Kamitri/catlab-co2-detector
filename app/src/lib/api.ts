@@ -149,6 +149,8 @@ export const api = {
   defaultFolder: () => invoke<string>("default_folder"),
   dataFolder: () => invoke<string>("data_folder"),
   exitApp: () => invoke<void>("exit_app"),
+  /** Hides window to tray; recording continues. */
+  hideWindow: () => invoke<void>("hide_window"),
 }
 
 export const events = {
@@ -160,4 +162,5 @@ export const events = {
     listen<Message>("message", (event) => handler(event.payload)),
   onRun: (handler: (run: Run) => void): Promise<UnlistenFn> => listen<Run>("run", (event) => handler(event.payload)),
   onExitRequested: (handler: () => void): Promise<UnlistenFn> => listen("exit-requested", () => handler()),
+  onCloseRequested: (handler: () => void): Promise<UnlistenFn> => listen("close-requested", () => handler()),
 }
