@@ -368,8 +368,38 @@ def main(
         wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM messages") == messages - 1, 5, "Message not deleted")
         print("Message deleted")
 
-        # Delete in History removes checked runs after confirmation
+        # Clear removes all messages after confirmation
+        button(driver, "Clear").click()
+        dialog_button(driver, "Clear").click()
+        wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM messages") == 0, 5, "Messages not cleared")
+        print("Messages cleared")
+
+        # About: data folder is export folder, cache folder is application data folder
+        driver.find_element(By.XPATH, "//button[normalize-space()='About']").click()
+        about = "return document.body.textContent"
+        folders = lambda: "Cache folder" in (text := driver.execute_script(about)) and str(work / "exports") in text
+        wait_until(folders, 5, "Data folder or cache folder not shown in About")
+
+        # Drag by grip: Na-ZY moves above Crash test, order is stored
         driver.find_element(By.XPATH, "//button[normalize-space()='History']").click()
+        grip = driver.find_element(By.XPATH, "//tr[td[normalize-space()='Na-ZY']]/td[@aria-label='Move']")
+        top_row = driver.find_element(By.XPATH, "//tr[td[normalize-space()='Crash test']]")
+        # Viewport coordinates: WebKit WebDriver reports grip cell as not interactable
+        box = "const box = arguments[0].getBoundingClientRect(); return [box.x + box.width / 2, box.y + box.height / 2, box.y]"
+        grip_x, grip_y, _ = driver.execute_script(box, grip)
+        _, _, top_y = driver.execute_script(box, top_row)
+        action = ActionBuilder(driver)
+        action.pointer_action.move_to_location(int(grip_x), int(grip_y)).pointer_down().move_to_location(
+            int(grip_x), int(top_y) + 4
+        ).pause(0.2).pointer_up()
+        action.perform()
+        top = "SELECT json_extract(parameters, '$.sample') FROM runs ORDER BY sort_order DESC LIMIT 1"
+        with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
+            wait_until(lambda: connection.execute(top).fetchone()[0] == "Na-ZY", 5, "Order not stored")
+        shot(driver, "15b-reordered")
+        print("History: rows reordered by drag")
+
+        # Delete in History removes checked runs after confirmation
         row = driver.find_element(By.XPATH, "//tr[td[normalize-space()='Crash test']]")
         row.find_element(By.CSS_SELECTOR, "button[role=checkbox]").click()
         button(driver, "Delete").click()
@@ -402,7 +432,7 @@ def main(
         # Reset to defaults fills form with default values; Cancel keeps saved settings
         button(driver, "Settings").click()
         dialog_button(driver, "Reset to defaults").click()
-        assert driver.find_element(By.ID, "equilibriumBandPercent").get_attribute("value") == "3"
+        assert driver.find_element(By.ID, "equilibriumBandPercent").get_attribute("value") == "6"
         assert driver.find_element(By.ID, "massPrecisionG").get_attribute("value") == "0.0001"
         theme_text = driver.find_element(By.ID, "theme").get_attribute("textContent")
         assert theme_text == "Light", theme_text

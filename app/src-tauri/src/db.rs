@@ -62,6 +62,18 @@ impl Database {
                 value TEXT NOT NULL
             );",
         )?;
+        // Order of runs in History, highest first; databases of earlier versions get order by start time
+        let has_order: bool = connection.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('runs') WHERE name = 'sort_order'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_order {
+            connection.execute_batch(
+                "ALTER TABLE runs ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+                 UPDATE runs SET sort_order = (SELECT COUNT(*) FROM runs AS earlier WHERE earlier.started_at <= runs.started_at);",
+            )?;
+        }
         Ok(Self { connection })
     }
 
@@ -104,8 +116,8 @@ impl Database {
 
     pub fn insert_run(&self, started_at: i64, scale: f64, exponent: f64, parameters: &RunParameters) -> DbResult<i64> {
         self.connection.execute(
-            "INSERT INTO runs (status, started_at, conversion_scale, conversion_exponent, parameters)
-             VALUES ('running', ?1, ?2, ?3, ?4)",
+            "INSERT INTO runs (status, started_at, conversion_scale, conversion_exponent, parameters, sort_order)
+             VALUES ('running', ?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM runs))",
             params![started_at, scale, exponent, serde_json::to_string(parameters).unwrap_or_default()],
         )?;
         Ok(self.connection.last_insert_rowid())
@@ -167,6 +179,16 @@ impl Database {
     const RUN_COLUMNS: &'static str = "id, status, started_at, finished_at, conversion_scale, conversion_exponent, \
         export_path, parameters, EXISTS (SELECT 1 FROM run_data WHERE run_data.run_id = runs.id)";
 
+    /// Sets order of runs in History; ids are in order from top to bottom.
+    pub fn reorder_runs(&self, ids: &[i64]) -> DbResult<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        for (index, id) in ids.iter().enumerate() {
+            transaction
+                .execute("UPDATE runs SET sort_order = ?1 WHERE id = ?2", params![(ids.len() - index) as i64, id])?;
+        }
+        transaction.commit()
+    }
+
     /// Edited data of run, or None when run uses measurements.
     pub fn run_data(&self, run_id: i64) -> DbResult<Option<Series>> {
         let mut statement = self
@@ -223,8 +245,9 @@ impl Database {
     }
 
     pub fn runs(&self) -> DbResult<Vec<Run>> {
-        let mut statement =
-            self.connection.prepare(&format!("SELECT {} FROM runs ORDER BY started_at DESC", Self::RUN_COLUMNS))?;
+        let mut statement = self
+            .connection
+            .prepare(&format!("SELECT {} FROM runs ORDER BY sort_order DESC, started_at DESC", Self::RUN_COLUMNS))?;
         let rows = statement.query_map([], Self::run_from_row)?;
         rows.collect()
     }
@@ -258,6 +281,11 @@ impl Database {
             params![timestamp, level, text],
         )?;
         Ok(Message { id: self.connection.last_insert_rowid(), timestamp, level: level.into(), text: text.into() })
+    }
+
+    pub fn clear_messages(&self) -> DbResult<()> {
+        self.connection.execute("DELETE FROM messages", [])?;
+        Ok(())
     }
 
     pub fn delete_message(&self, id: i64) -> DbResult<()> {
@@ -365,6 +393,41 @@ mod tests {
         assert!(database.run(id).unwrap().unwrap().edited);
         database.delete_run_data(id).unwrap();
         assert!(database.run_data(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn new_run_on_top_and_reorder() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(&directory.path().join("test.db")).unwrap();
+        let first = database.insert_run(1000, 1785.9, 0.0111, &RunParameters::default()).unwrap();
+        let second = database.insert_run(2000, 1785.9, 0.0111, &RunParameters::default()).unwrap();
+        let order = |database: &Database| database.runs().unwrap().iter().map(|run| run.id).collect::<Vec<_>>();
+        assert_eq!(order(&database), vec![second, first]);
+        database.reorder_runs(&[first, second]).unwrap();
+        assert_eq!(order(&database), vec![first, second]);
+        let third = database.insert_run(500, 1785.9, 0.0111, &RunParameters::default()).unwrap();
+        assert_eq!(order(&database), vec![third, first, second]);
+    }
+
+    #[test]
+    fn database_of_earlier_version_gets_order_by_start() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("test.db");
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE runs (id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT NOT NULL, started_at INTEGER NOT NULL,
+                     finished_at INTEGER, conversion_scale REAL NOT NULL, conversion_exponent REAL NOT NULL, export_path TEXT,
+                     parameters TEXT NOT NULL);
+                     INSERT INTO runs (status, started_at, conversion_scale, conversion_exponent, parameters)
+                     VALUES ('finished', 2000, 1785.9, 0.0111, '{}'), ('finished', 1000, 1785.9, 0.0111, '{}');",
+                )
+                .unwrap();
+        }
+        let database = Database::open(&path).unwrap();
+        let starts: Vec<i64> = database.runs().unwrap().iter().map(|run| run.started_at).collect();
+        assert_eq!(starts, vec![2000, 1000]);
     }
 
     #[test]

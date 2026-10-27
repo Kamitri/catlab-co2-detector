@@ -134,14 +134,18 @@ export const api = {
   /** Exports runs to one workbook, one sheet per run. */
   exportRuns: (ids: number[], path: string) => invoke<string>("export_runs", { ids, path }),
   exportFolder: () => invoke<string>("export_folder"),
+  openExportFolder: () => invoke<void>("open_export_folder"),
   finishRun: (id: number, parameters: RunParameters) => invoke<Run>("finish_run", { id, parameters }),
   abortRun: (id: number) => invoke<Run>("abort_run", { id }),
   /** Deletes chart measurements from `from` to now outside runs; returns end time. */
   clearChart: (from: number) => invoke<number>("clear_chart", { from }),
   listRuns: () => invoke<Run[]>("list_runs"),
+  /** Sets order of runs in History; ids from top to bottom. */
+  reorderRuns: (ids: number[]) => invoke<void>("reorder_runs", { ids }),
   deleteRun: (id: number) => invoke<void>("delete_run", { id }),
   logMessage: (level: MessageLevel, text: string) => invoke<void>("log_message", { level, text }),
   deleteMessage: (id: number) => invoke<void>("delete_message", { id }),
+  clearMessages: () => invoke<void>("clear_messages"),
   defaultFolder: () => invoke<string>("default_folder"),
   dataFolder: () => invoke<string>("data_folder"),
   exitApp: () => invoke<void>("exit_app"),

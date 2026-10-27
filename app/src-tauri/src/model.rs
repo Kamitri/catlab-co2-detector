@@ -42,7 +42,7 @@ impl Default for Settings {
             export_folder: String::new(),
             file_name_pattern: "{date}_{time}_{sample}".into(),
             co_window_s: 300.0,
-            equilibrium_band_percent: 3.0,
+            equilibrium_band_percent: 6.0,
             conversion_scale: VENDOR_SCALE,
             conversion_exponent: VENDOR_EXPONENT,
             extra_ports: Vec::new(),

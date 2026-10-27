@@ -1,6 +1,7 @@
 import { save } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { GripVertical } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { Chart, type ChartTrace, type DragMode } from "@/components/Chart"
 import { ChartControls } from "@/components/ChartControls"
@@ -166,6 +167,15 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [focused, setFocused] = useState<number | null>(null)
   const [dragMode, setDragMode] = useState<DragMode>("zoom")
+  // Row dragged by grip, and row index where it lands (index equal to row count is below last row)
+  const [moving, setMovingState] = useState<{ id: number; target: number } | null>(null)
+  // Handlers use ref: mouse events can arrive before render with new state
+  const movingRef = useRef<{ id: number; target: number } | null>(null)
+  const setMoving = (value: { id: number; target: number } | null) => {
+    movingRef.current = value
+    setMovingState(value)
+  }
+  const tableBody = useRef<HTMLTableSectionElement>(null)
 
   const load = useCallback(async () => {
     const list = await api.listRuns()
@@ -247,6 +257,46 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
         }))
       : []
 
+  /** Row index where dragged row lands: before first row with center below pointer. */
+  function landingIndex(clientY: number): number {
+    const rows = [...(tableBody.current?.querySelectorAll("tr[data-run-id]") ?? [])]
+    const index = rows.findIndex((row) => {
+      const box = row.getBoundingClientRect()
+      return clientY < box.top + box.height / 2
+    })
+    return index < 0 ? rows.length : index
+  }
+
+  // Mouse events on window follow drag outside grip; WebKit WebDriver sends mouse events but not pointer events
+  function startMove(id: number, index: number) {
+    setMoving({ id, target: index })
+    const move = (event: MouseEvent) => {
+      const current = movingRef.current
+      if (current) setMoving({ id: current.id, target: landingIndex(event.clientY) })
+    }
+    const up = () => {
+      window.removeEventListener("mousemove", move)
+      window.removeEventListener("mouseup", up)
+      finishMove()
+    }
+    window.addEventListener("mousemove", move)
+    window.addEventListener("mouseup", up)
+  }
+
+  function finishMove() {
+    const current = movingRef.current
+    if (!current) return
+    const from = runs.findIndex((run) => run.id === current.id)
+    setMoving(null)
+    const to = current.target > from ? current.target - 1 : current.target
+    if (from < 0 || to === from) return
+    const next = [...runs]
+    const [run] = next.splice(from, 1)
+    next.splice(to, 0, run)
+    setRuns(next)
+    void api.reorderRuns(next.map((item) => item.id)).catch((error) => api.logMessage("error", String(error)))
+  }
+
   // Newest first: blank run is deleted after runs that use it
   async function deleteChecked() {
     const selected = runs.filter((run) => checked.has(run.id)).sort((first, second) => second.startedAt - first.startedAt)
@@ -291,6 +341,7 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
         <Table>
           <TableHeader className="sticky top-0 bg-sidebar">
             <TableRow>
+              <TableHead className="w-6" />
               <TableHead className="w-10" />
               <TableHead>Start</TableHead>
               <TableHead>Sample</TableHead>
@@ -301,14 +352,32 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
               <TableHead className="text-right">Capacity (mmol/g)</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {runs.map((run) => (
+          <TableBody ref={tableBody}>
+            {runs.map((run, index) => (
               <TableRow
                 key={run.id}
+                data-run-id={run.id}
                 data-state={focused === run.id ? "selected" : undefined}
-                className="cursor-default"
+                className={cn(
+                  "cursor-default",
+                  moving?.id === run.id && "opacity-50",
+                  moving?.target === index && "shadow-[inset_0_2px_0_var(--primary)]",
+                  moving?.target === runs.length && index === runs.length - 1 && "shadow-[inset_0_-2px_0_var(--primary)]",
+                )}
                 onClick={() => setFocused(run.id)}
               >
+                <TableCell
+                  aria-label="Move"
+                  className="cursor-grab pr-0 text-muted-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => {
+                    if (event.button !== 0) return
+                    event.preventDefault()
+                    startMove(run.id, index)
+                  }}
+                >
+                  <GripVertical className="size-3.5" />
+                </TableCell>
                 <TableCell onClick={(event) => event.stopPropagation()}>
                   <Checkbox checked={checked.has(run.id)} onCheckedChange={() => toggle(run.id)} />
                 </TableCell>

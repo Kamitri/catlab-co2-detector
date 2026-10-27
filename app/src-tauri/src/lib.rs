@@ -18,6 +18,7 @@ use acquisition::{Sink, now_ms};
 use calculation::{RunData, RunResult, Series, calculate, run_stoichiometric_time};
 use db::Database;
 use model::{Connection, Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
+use tauri_plugin_opener::OpenerExt;
 
 const DAY_MS: i64 = 86_400_000;
 
@@ -352,6 +353,13 @@ fn export_folder(app: AppHandle, state: State<AppState>) -> CommandResult<String
     Ok(export_folder_path(&app, &lock(&state.database))?.display().to_string())
 }
 
+/// Opens export folder in file manager; folder can be outside paths that frontend may open.
+#[tauri::command]
+fn open_export_folder(app: AppHandle, state: State<AppState>) -> CommandResult<()> {
+    let folder = export_folder_path(&app, &lock(&state.database))?;
+    app.opener().open_path(folder.display().to_string(), None::<&str>).map_err(error_text)
+}
+
 fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResult<ExportJob> {
     let settings = database.settings().map_err(error_text)?;
     let folder = export_folder_path(app, database)?;
@@ -498,6 +506,12 @@ fn clear_chart(app: AppHandle, state: State<AppState>, from: i64) -> CommandResu
     Ok(to)
 }
 
+/// Sets order of runs in History; ids are in order from top to bottom.
+#[tauri::command]
+fn reorder_runs(state: State<AppState>, ids: Vec<i64>) -> CommandResult<()> {
+    lock(&state.database).reorder_runs(&ids).map_err(error_text)
+}
+
 #[tauri::command]
 fn list_runs(state: State<AppState>) -> CommandResult<Vec<Run>> {
     lock(&state.database).runs().map_err(error_text)
@@ -523,6 +537,11 @@ fn delete_run(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<
 fn log_message(app: AppHandle, state: State<AppState>, level: String, text: String) -> CommandResult<()> {
     log(&app, &lock(&state.database), &level, &text);
     Ok(())
+}
+
+#[tauri::command]
+fn clear_messages(state: State<AppState>) -> CommandResult<()> {
+    lock(&state.database).clear_messages().map_err(error_text)
 }
 
 #[tauri::command]
@@ -639,13 +658,16 @@ pub fn run() {
             export_run,
             export_runs,
             export_folder,
+            open_export_folder,
             finish_run,
             abort_run,
             clear_chart,
             list_runs,
+            reorder_runs,
             delete_run,
             log_message,
             delete_message,
+            clear_messages,
             data_folder,
             default_folder,
             exit_app,
