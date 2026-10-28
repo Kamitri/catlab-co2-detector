@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { AboutView } from "@/components/AboutView"
 import { HistoryView } from "@/components/HistoryView"
 import { LiveView } from "@/components/LiveView"
+import { ManualView } from "@/components/ManualView"
 import { ConfirmDialog, FinishDialog, MarkerDialog, RecoveryDialog, SampleDialog } from "@/components/RunDialogs"
 import { SettingsDialog } from "@/components/SettingsDialog"
 import { StatusPanel } from "@/components/StatusPanel"
@@ -27,7 +28,7 @@ type DialogState =
   | "close"
   | "update"
   | null
-type View = "live" | "history" | "about"
+type View = "live" | "history" | "manual" | "about"
 
 function startDefaults(previous: Run | undefined, settings: Settings): RunParameters {
   const base: RunParameters = {
@@ -122,6 +123,7 @@ export default function App() {
           <TabsList>
             <TabsTrigger value="live">Live</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="manual">Manual</TabsTrigger>
             <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -155,6 +157,8 @@ export default function App() {
             />
           ) : view === "history" ? (
             <HistoryView refreshKey={`${state.activeRun?.id}-${state.lastRun?.id}-${state.lastRun?.exportPath}`} />
+          ) : view === "manual" ? (
+            <ManualView />
           ) : (
             <AboutView updater={updater} />
           )}

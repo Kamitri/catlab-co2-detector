@@ -18,6 +18,7 @@ The serial protocol and the conversion formula are documented in [`docs/protocol
 - The sample (name, sorbent, gas, flow rate, calculation settings) is configured with Sample before Start. Start then starts the run at once. During a run, Sample edits the run.
 - A run is a time interval over the stored measurements. A run that was in progress when the application closed is reopened on the next start.
 - Clear chart (outside a run) deletes the measurements on the live chart from the database, except measurements of runs. The chart then starts again at 0 s.
+- Manual shows the manual of the CO₂ system (`src/assets/manual.pdf`), rendered with pdf.js. To change the manual, replace the PDF file.
 - Charts show time in seconds on the bottom axis and clock time on the top axis. The chart of several runs in History shows seconds only.
 - Finish and Abort export the run to an xlsx file in the export folder. An existing file is never overwritten.
 - Export in History writes all checked runs to one workbook, one sheet per run. The sheet name is the start date and the sample, for example `2026-10-25_Na-ZY`.
