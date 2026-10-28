@@ -56,6 +56,8 @@ export function SettingsDialog({
   }, [])
 
   const invalid = new Set<string>(NUMBER_KEYS.filter((key) => !(parseNumber(numbers[key]) > 0)))
+  // Whole days: retention rounded to 0 would delete measurements outside runs at once
+  if (!Number.isInteger(parseNumber(numbers.retentionDays))) invalid.add("retentionDays")
   if (!pattern.trim()) invalid.add("pattern")
 
   const numberRow = (key: NumberKey, label: React.ReactNode, unit?: string) => (
@@ -85,7 +87,6 @@ export function SettingsDialog({
     await onSave({
       ...settings,
       ...parsed,
-      retentionDays: Math.round(parsed.retentionDays),
       exportFolder: folder.trim(),
       fileNamePattern: pattern.trim(),
       theme,

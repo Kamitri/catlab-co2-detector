@@ -42,11 +42,15 @@ pub fn decode_reply(frame: &[u8]) -> Result<u32, FrameError> {
     Ok(count)
 }
 
-/// Finds first valid frame in buffer and returns count N.
+/// Finds first valid frame in buffer and returns count N. Request is skipped: it has valid checksum and decodes as
+/// N = 0, and serial adapters or ports that echo sent bytes would otherwise give constant N = 0.
 pub fn find_reply(buffer: &[u8]) -> Result<u32, FrameError> {
     let mut last_error = FrameError::Incomplete;
     for start in 0..buffer.len() {
         if buffer[start] != START_BYTE || start + FRAME_LENGTH > buffer.len() {
+            continue;
+        }
+        if buffer[start..start + FRAME_LENGTH] == REQUEST {
             continue;
         }
         match decode_reply(&buffer[start..start + FRAME_LENGTH]) {
@@ -104,6 +108,14 @@ mod tests {
     #[test]
     fn finds_frame_after_noise() {
         let mut buffer = vec![0x00, 0x21, 0x40, 0x13];
+        buffer.extend_from_slice(&encode_reply(262));
+        assert_eq!(find_reply(&buffer), Ok(262));
+    }
+
+    #[test]
+    fn skips_echoed_request() {
+        assert_eq!(find_reply(&REQUEST), Err(FrameError::Incomplete));
+        let mut buffer = REQUEST.to_vec();
         buffer.extend_from_slice(&encode_reply(262));
         assert_eq!(find_reply(&buffer), Ok(262));
     }

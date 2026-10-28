@@ -63,10 +63,18 @@ export function useMonitor() {
   const activeRunRef = useRef<Run | null>(null)
   const equilibriumRunId = useRef<number | null>(null)
 
+  const loadSequence = useRef(0)
+
   const loadMeasurements = useCallback(async (run: Run | null) => {
+    const sequence = ++loadSequence.current
     const now = Date.now()
     const from = run ? run.startedAt : now - MONITOR_SPAN_MS
-    const loaded = await api.getMeasurements(from, now + 60_000)
+    const [loaded, loadedMarkers] = await Promise.all([
+      api.getMeasurements(from, now + 60_000),
+      run ? api.getMarkers(run.id) : Promise.resolve([]),
+    ])
+    // Later load replaces this one, for example load of run started while monitor data loaded
+    if (sequence !== loadSequence.current) return
     // Keep measurements that arrived by event while query ran (newer than last loaded measurement)
     const lastLoaded = loaded.timestamps.length > 0 ? loaded.timestamps[loaded.timestamps.length - 1] : -Infinity
     const current = measurements.current
@@ -81,7 +89,7 @@ export function useMonitor() {
     const start = run ? run.startedAt : (loaded.timestamps[0] ?? now)
     viewStartRef.current = start
     setViewStart(start)
-    setMarkers(run ? await api.getMarkers(run.id) : [])
+    setMarkers(loadedMarkers)
     setMeasurementsVersion((version) => version + 1)
   }, [])
 

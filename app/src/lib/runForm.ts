@@ -26,12 +26,21 @@ export const SOAP_TIME_COUNT = 10
 export type RunFormValues = Omit<RunParameters, NumericKey | "soapTimesS"> &
   Record<NumericKey, string> & { soapTimesS: string[] }
 
+/**
+ * Value with given decimal places when that does not change it; otherwise full value. Stored value with more
+ * decimals than precision in Settings (for example after precision change) is not rounded when form is saved.
+ */
+function fixedWithoutRounding(value: number, places: number): string {
+  const fixed = value.toFixed(places)
+  return Number(fixed) === value ? fixed : String(value)
+}
+
 export function toFormValues(parameters: RunParameters, decimals: Decimals = DEFAULT_DECIMALS): RunFormValues {
   const values = { ...parameters } as unknown as RunFormValues
   for (const key of NUMERIC_KEYS) {
     const value = parameters[key]
     const places = decimals[key]
-    values[key] = places !== undefined && Number.isFinite(value) ? value.toFixed(places) : String(value ?? "")
+    values[key] = places !== undefined && Number.isFinite(value) ? fixedWithoutRounding(value, places) : String(value ?? "")
   }
   const times = (parameters.soapTimesS ?? []).map(String)
   while (times.length < SOAP_TIME_COUNT) times.push("")

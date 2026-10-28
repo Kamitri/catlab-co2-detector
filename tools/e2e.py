@@ -263,6 +263,14 @@ def main(
         driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
         wait_text(driver, "Stoichiometric time")
         shot(driver, "08-history")
+        # Manual: all PDF pages rendered, with text layer for selection
+        driver.find_element(By.XPATH, "//button[normalize-space()='Manual']").click()
+        pages = "return document.querySelectorAll('[data-page]').length"
+        wait_until(lambda: driver.execute_script(pages) == 9, 10, "Manual pages not shown")
+        page_text = "return document.querySelector('[data-page] .textLayer').textContent"
+        wait_until(lambda: "MANUAL FOR CO2 SYSTEM" in driver.execute_script(page_text), 10, "Manual text not shown")
+        shot(driver, "08a-manual")
+        print("Manual: 9 pages with text")
         driver.find_element(By.XPATH, "//button[normalize-space()='About']").click()
         wait_text(driver, "All rights reserved")
         shot(driver, "08b-about")

@@ -73,6 +73,12 @@ export function useUpdater() {
         }
         update.download(onEvent, { timeout: DOWNLOAD_TIMEOUT_MS }).then(resolve, reject)
       }).finally(() => window.clearTimeout(stallTimer))
+      // Installer ends application; run started during download keeps recording, update waits for next click
+      if ((await api.getSnapshot()).activeRun) {
+        setStatus("available")
+        void api.logMessage("warning", `Update to ${update.version} postponed: run in progress`)
+        return
+      }
       setStatus("installing")
       void api.logMessage("info", `Installing version ${update.version}`)
       await update.install()

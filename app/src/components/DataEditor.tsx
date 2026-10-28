@@ -60,12 +60,21 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
   // Edit is committed once: Enter, Tab or click elsewhere commit, later blur of removed input does not
   const editOpen = useRef(false)
   const loaded = rows !== null
+  // Ref: data loads once per run, not again when parent renders new callback
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   useEffect(() => {
-    void api.getRunData(run.id).then((data) => {
-      setRows(data.times.map((time, index) => ({ time: toText(time), count: toText(data.counts[index]) })))
-      setEdited(data.edited)
-    })
+    api.getRunData(run.id).then(
+      (data) => {
+        setRows(data.times.map((time, index) => ({ time: toText(time), count: toText(data.counts[index]) })))
+        setEdited(data.edited)
+      },
+      (error: unknown) => {
+        void api.logMessage("error", `Data not loaded: ${String(error)}`)
+        closeRef.current()
+      },
+    )
   }, [run.id])
 
   useLayoutEffect(() => {
@@ -176,7 +185,8 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
     if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop()
     const next = [...current]
     lines.forEach((line, offset) => {
-      const cells = line.split(/\t|;|,(?=\s*-?\d)/).map((cell) => cell.trim())
+      // Cells are separated by tab (Excel) or semicolon; comma is decimal separator in some locales, not separator
+      const cells = line.split(line.includes("\t") ? "\t" : ";").map((cell) => cell.trim())
       const index = cursor.row + offset
       const row = { ...(next[index] ?? { time: "", count: "" }) }
       if (cursor.column === 0) {
