@@ -1,5 +1,6 @@
 """End-to-end test of built application with simulator, tauri-driver and virtual display (Linux only)."""
 
+import math
 import os
 import signal
 import socket
@@ -432,17 +433,20 @@ def main(
         wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM runs") == 1, 5, "Run not deleted")
         print("Run deleted in History")
 
-        # Data editor: typing in cell replaces value; Save keeps measurements and stores edited data
+        # Data editor: typing in raw signal cell replaces value; CO₂ follows from raw signal. Save keeps measurements
+        # and stores edited data
         driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
         button(driver, "Edit data").click()
         wait_until(lambda: driver.find_elements(By.CSS_SELECTOR, "[data-row]"), 5, "Data not shown")
-        driver.find_element(By.CSS_SELECTOR, "[aria-label='Data']").send_keys("50000", Keys.ENTER)
+        driver.find_element(By.CSS_SELECTOR, "[aria-label='Data']").send_keys("300", Keys.ENTER)
         shot(driver, "16-data-editor")
         dialog_button(driver, "Save").click()
         edited_rows = "SELECT COUNT(*) FROM run_data"
         wait_until(lambda: query_count(work, edited_rows) > 0, 5, "Edited data not saved")
+        first_signal = query_count(work, "SELECT raw_signal FROM run_data WHERE position = 0")
+        assert first_signal == 300, first_signal
         first_value = query_count(work, "SELECT value_ppm FROM run_data WHERE position = 0")
-        assert first_value == 50000, first_value
+        assert abs(first_value - 1785.9 * math.exp(0.0111 * 300)) < 1e-6, first_value
         edited_badge = "return document.body.textContent.includes('Edited')"
         wait_until(lambda: driver.execute_script(edited_badge), 5, "Edited badge not shown")
         # Restore original removes edited data after confirmation

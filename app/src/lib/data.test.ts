@@ -4,7 +4,7 @@ import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
 import type { RunParameters } from "@/lib/api"
 import { toFormValues } from "@/lib/runForm"
 import { stepValue } from "@/lib/step"
-import { timeAxisEnd, timeTicks } from "@/lib/view"
+import { RUN_TIME_AXIS, timeAxisEnd, timeTicks } from "@/lib/view"
 
 const options = { bandPercent: 3, windowS: 300, delayS: 0 }
 
@@ -66,6 +66,12 @@ describe("timeAxisEnd", () => {
     expect(timeAxisEnd(4999)).toBe(6000)
     expect(timeAxisEnd(5000)).toBe(7000)
     expect(timeAxisEnd(Number.NaN)).toBe(5000)
+  })
+
+  it("starts at 2000 s during run and increases by 500 s", () => {
+    expect(timeAxisEnd(0, RUN_TIME_AXIS)).toBe(2000)
+    expect(timeAxisEnd(1499, RUN_TIME_AXIS)).toBe(2000)
+    expect(timeAxisEnd(1500, RUN_TIME_AXIS)).toBe(2500)
   })
 })
 

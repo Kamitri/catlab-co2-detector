@@ -18,6 +18,7 @@ use acquisition::{Sink, now_ms};
 use calculation::{RunData, RunResult, Series, calculate, run_stoichiometric_time};
 use db::Database;
 use model::{Connection, Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
+use protocol::{concentration, raw_signal};
 use tauri_plugin_opener::OpenerExt;
 
 const DAY_MS: i64 = 86_400_000;
@@ -247,8 +248,8 @@ fn get_markers(state: State<AppState>, id: i64) -> CommandResult<Vec<Marker>> {
 
 /// Data of run: edited data when saved, otherwise measurements in time interval of run.
 fn load_run_data(database: &Database, run: &Run) -> Result<RunData, rusqlite::Error> {
-    if let Some(series) = database.run_data(run.id)? {
-        return Ok(RunData::edited(series));
+    if let Some((series, counts)) = database.run_data(run.id)? {
+        return Ok(RunData::edited(series, counts));
     }
     let measurements = database.measurements(run.started_at, run.finished_at.unwrap_or_else(now_ms))?;
     Ok(RunData::measured(run, &measurements))
@@ -274,6 +275,8 @@ fn run_result(database: &Database, run: &Run) -> Result<(RunResult, Option<Strin
 #[serde(rename_all = "camelCase")]
 struct RunDataView {
     times: Vec<f64>,
+    /// Raw signal N; for data edited before raw signal was editable, N of CO2 value
+    counts: Vec<f64>,
     values: Vec<f64>,
     edited: bool,
 }
@@ -283,22 +286,27 @@ fn get_run_data(state: State<AppState>, id: i64) -> CommandResult<RunDataView> {
     let database = lock(&state.database);
     let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
     let data = load_run_data(&database, &run).map_err(error_text)?;
-    Ok(RunDataView { times: data.series.times, values: data.series.concentrations, edited: data.edited })
+    let counts = data.counts.unwrap_or_else(|| {
+        let signal = |value: &f64| raw_signal(*value, run.conversion_scale, run.conversion_exponent);
+        data.series.concentrations.iter().map(signal).collect()
+    });
+    Ok(RunDataView { times: data.series.times, counts, values: data.series.concentrations, edited: data.edited })
 }
 
-/// Saves edited data of finished or aborted run, sorted by time; measurements stay unchanged.
+/// Saves edited data of finished or aborted run, sorted by time; CO2 follows from raw signal with conversion of
+/// run. Measurements stay unchanged.
 #[tauri::command]
 fn save_run_data(
     app: AppHandle,
     state: State<AppState>,
     id: i64,
     times: Vec<f64>,
-    values: Vec<f64>,
+    counts: Vec<f64>,
 ) -> CommandResult<()> {
-    if times.len() != values.len() || times.is_empty() {
-        return Err("Data has no rows or rows without value".into());
+    if times.len() != counts.len() || times.is_empty() {
+        return Err("Data has no rows or rows without raw signal".into());
     }
-    if times.iter().chain(&values).any(|number| !number.is_finite()) {
+    if times.iter().chain(&counts).any(|number| !number.is_finite()) || counts.iter().any(|count| *count < 0.0) {
         return Err("Data has value that is not a number".into());
     }
     let database = lock(&state.database);
@@ -306,13 +314,17 @@ fn save_run_data(
     if run.status == RunStatus::Running {
         return Err("Run in progress".into());
     }
-    let mut rows: Vec<(f64, f64)> = times.into_iter().zip(values).collect();
+    let mut rows: Vec<(f64, f64)> = times.into_iter().zip(counts).collect();
     rows.sort_by(|first, second| first.0.total_cmp(&second.0));
+    let counts: Vec<f64> = rows.iter().map(|row| row.1).collect();
     let series = Series {
         times: rows.iter().map(|row| row.0).collect(),
-        concentrations: rows.iter().map(|row| row.1).collect(),
+        concentrations: counts
+            .iter()
+            .map(|count| concentration(*count, run.conversion_scale, run.conversion_exponent))
+            .collect(),
     };
-    database.save_run_data(id, &series).map_err(error_text)?;
+    database.save_run_data(id, &series, &counts).map_err(error_text)?;
     log(&app, &database, "info", &format!("Data edited: {}", run.parameters.sample));
     Ok(())
 }

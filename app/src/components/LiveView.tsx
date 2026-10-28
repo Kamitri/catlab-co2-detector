@@ -7,7 +7,7 @@ import { useChartView } from "@/hooks/useChartView"
 import type { MonitorState } from "@/hooks/useMonitor"
 import { concentration, GAP_THRESHOLD_MS, withGaps } from "@/lib/data"
 import { formatClock, formatInteger } from "@/lib/format"
-import { defaultView } from "@/lib/view"
+import { DEFAULT_CO2_RANGE, defaultView, MONITOR_TIME_AXIS, RUN_TIME_AXIS } from "@/lib/view"
 
 const CO2_HOVER = "%{y:,.0f} ppm<extra></extra>"
 
@@ -53,7 +53,10 @@ export function LiveView({ state, onSample, onStart, onMarker, onFinish, onAbort
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRun, settings, measurementsVersion, viewStart])
 
-  const chartView = useChartView(defaultView(lastTime), `${activeRun?.id ?? "monitor"}-${viewStart}`)
+  const chartView = useChartView(
+    defaultView(lastTime, DEFAULT_CO2_RANGE, activeRun ? RUN_TIME_AXIS : MONITOR_TIME_AXIS),
+    `${activeRun?.id ?? "monitor"}-${viewStart}`,
+  )
 
   // Newest data point, shown on chart while pointer is outside it; label as hover label
   const latest = useMemo((): ChartLatest | undefined => {

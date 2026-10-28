@@ -41,8 +41,10 @@ const UPDATE_TEXT: Record<UpdateStatus, string> = {
   checking: "Checking",
   current: "Up to date",
   available: "",
+  downloading: "Downloading",
   installing: "Installing",
   failed: "Check failed",
+  installFailed: "Update failed",
 }
 
 export function AboutView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
@@ -84,12 +86,14 @@ export function AboutView({ updater }: { updater: ReturnType<typeof useUpdater> 
           <Row label="Updates">
             <span className="flex items-center gap-2">
               <span className="text-muted-foreground">
-                {updater.update ? `Version ${updater.update.version} available` : UPDATE_TEXT[updater.status]}
+                {updater.update && updater.status === "available"
+                  ? `Version ${updater.update.version} available`
+                  : UPDATE_TEXT[updater.status]}
               </span>
               <Button
                 size="xs"
                 variant="outline"
-                disabled={updater.status === "checking" || updater.status === "installing"}
+                disabled={["checking", "downloading", "installing"].includes(updater.status)}
                 onClick={() => void updater.checkNow()}
               >
                 Check for updates

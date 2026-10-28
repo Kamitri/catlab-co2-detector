@@ -55,6 +55,7 @@ impl Database {
                 position INTEGER NOT NULL,
                 time_s REAL NOT NULL,
                 value_ppm REAL NOT NULL,
+                raw_signal REAL,
                 PRIMARY KEY (run_id, position)
             );
             CREATE TABLE IF NOT EXISTS sample (
@@ -73,6 +74,15 @@ impl Database {
                 "ALTER TABLE runs ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
                  UPDATE runs SET sort_order = (SELECT COUNT(*) FROM runs AS earlier WHERE earlier.started_at <= runs.started_at);",
             )?;
+        }
+        // Raw signal of edited data, added in version 1.0.1; earlier edited data has CO2 values only
+        let has_raw_signal: bool = connection.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('run_data') WHERE name = 'raw_signal'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_raw_signal {
+            connection.execute_batch("ALTER TABLE run_data ADD COLUMN raw_signal REAL;")?;
         }
         Ok(Self { connection })
     }
@@ -190,29 +200,40 @@ impl Database {
     }
 
     /// Edited data of run, or None when run uses measurements.
-    pub fn run_data(&self, run_id: i64) -> DbResult<Option<Series>> {
-        let mut statement = self
-            .connection
-            .prepare_cached("SELECT time_s, value_ppm FROM run_data WHERE run_id = ?1 ORDER BY position")?;
-        let rows = statement.query_map(params![run_id], |row| Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?)))?;
+    /// Edited data of run, and raw signal when every row has one.
+    pub fn run_data(&self, run_id: i64) -> DbResult<Option<(Series, Option<Vec<f64>>)>> {
+        let mut statement = self.connection.prepare_cached(
+            "SELECT time_s, value_ppm, raw_signal FROM run_data WHERE run_id = ?1 ORDER BY position",
+        )?;
+        let rows = statement.query_map(params![run_id], |row| {
+            Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?, row.get::<_, Option<f64>>(2)?))
+        })?;
         let mut series = Series::default();
+        let mut counts = Some(Vec::new());
         for row in rows {
-            let (time, value) = row?;
+            let (time, value, count) = row?;
             series.times.push(time);
             series.concentrations.push(value);
+            match (&mut counts, count) {
+                (Some(list), Some(count)) => list.push(count),
+                _ => counts = None,
+            }
         }
-        Ok(if series.times.is_empty() { None } else { Some(series) })
+        Ok(if series.times.is_empty() { None } else { Some((series, counts)) })
     }
 
-    /// Replaces edited data of run.
-    pub fn save_run_data(&self, run_id: i64, series: &Series) -> DbResult<()> {
+    /// Replaces edited data of run; counts are raw signal of rows.
+    pub fn save_run_data(&self, run_id: i64, series: &Series, counts: &[f64]) -> DbResult<()> {
         let transaction = self.connection.unchecked_transaction()?;
         transaction.execute("DELETE FROM run_data WHERE run_id = ?1", params![run_id])?;
         {
-            let mut statement = transaction
-                .prepare("INSERT INTO run_data (run_id, position, time_s, value_ppm) VALUES (?1, ?2, ?3, ?4)")?;
-            for (position, (time, value)) in series.times.iter().zip(&series.concentrations).enumerate() {
-                statement.execute(params![run_id, position as i64, time, value])?;
+            let mut statement = transaction.prepare(
+                "INSERT INTO run_data (run_id, position, time_s, value_ppm, raw_signal) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for (position, ((time, value), count)) in
+                series.times.iter().zip(&series.concentrations).zip(counts).enumerate()
+            {
+                statement.execute(params![run_id, position as i64, time, value, count])?;
             }
         }
         transaction.commit()
@@ -388,8 +409,10 @@ mod tests {
         assert!(database.run_data(id).unwrap().is_none());
         assert!(!database.run(id).unwrap().unwrap().edited);
         let series = Series { times: vec![1.0, 2.0], concentrations: vec![2500.0, 2600.0] };
-        database.save_run_data(id, &series).unwrap();
-        assert_eq!(database.run_data(id).unwrap().unwrap().concentrations, vec![2500.0, 2600.0]);
+        database.save_run_data(id, &series, &[70.0, 71.0]).unwrap();
+        let (saved, counts) = database.run_data(id).unwrap().unwrap();
+        assert_eq!(saved.concentrations, vec![2500.0, 2600.0]);
+        assert_eq!(counts, Some(vec![70.0, 71.0]));
         assert!(database.run(id).unwrap().unwrap().edited);
         database.delete_run_data(id).unwrap();
         assert!(database.run_data(id).unwrap().is_none());

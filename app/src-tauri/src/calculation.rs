@@ -32,18 +32,18 @@ impl Series {
         let concentrations = measurements
             .counts
             .iter()
-            .map(|count| concentration(*count, run.conversion_scale, run.conversion_exponent))
+            .map(|count| concentration(f64::from(*count), run.conversion_scale, run.conversion_exponent))
             .collect();
         Self { times, concentrations }
     }
 }
 
-/// Data of run for calculation and export. Detector counts exist only for measured data; edited data
-/// has CO2 values only.
+/// Data of run for calculation and export. Raw signal is missing for data edited before raw signal
+/// was editable; that data has CO2 values only.
 #[derive(Debug, Clone, Default)]
 pub struct RunData {
     pub series: Series,
-    pub counts: Option<Vec<u32>>,
+    pub counts: Option<Vec<f64>>,
     pub edited: bool,
 }
 
@@ -51,13 +51,13 @@ impl RunData {
     pub fn measured(run: &Run, measurements: &Measurements) -> Self {
         Self {
             series: Series::from_measurements(run, measurements),
-            counts: Some(measurements.counts.clone()),
+            counts: Some(measurements.counts.iter().map(|count| f64::from(*count)).collect()),
             edited: false,
         }
     }
 
-    pub fn edited(series: Series) -> Self {
-        Self { series, counts: None, edited: true }
+    pub fn edited(series: Series, counts: Option<Vec<f64>>) -> Self {
+        Self { series, counts, edited: true }
     }
 }
 

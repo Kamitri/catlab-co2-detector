@@ -57,9 +57,14 @@ pub fn find_reply(buffer: &[u8]) -> Result<u32, FrameError> {
     Err(last_error)
 }
 
-/// Converts count N to CO2 concentration (ppmv).
-pub fn concentration(count: u32, scale: f64, exponent: f64) -> f64 {
-    scale * (exponent * f64::from(count)).exp()
+/// Converts raw signal N to CO2 concentration (ppmv).
+pub fn concentration(count: f64, scale: f64, exponent: f64) -> f64 {
+    scale * (exponent * count).exp()
+}
+
+/// Raw signal N of CO2 concentration (ppmv); inverse of [`concentration`].
+pub fn raw_signal(concentration: f64, scale: f64, exponent: f64) -> f64 {
+    (concentration / scale).ln() / exponent
 }
 
 /// Encodes count N as reply frame. Used by tests and simulator.
@@ -112,7 +117,8 @@ mod tests {
 
     #[test]
     fn matches_vendor_values() {
-        assert!((concentration(120, VENDOR_SCALE, VENDOR_EXPONENT) - 6766.0840307695).abs() < 1e-6);
-        assert!((concentration(121, VENDOR_SCALE, VENDOR_EXPONENT) - 6841.60593465807).abs() < 1e-6);
+        assert!((concentration(120.0, VENDOR_SCALE, VENDOR_EXPONENT) - 6766.0840307695).abs() < 1e-6);
+        assert!((concentration(121.0, VENDOR_SCALE, VENDOR_EXPONENT) - 6841.60593465807).abs() < 1e-6);
+        assert!((raw_signal(6766.0840307695, VENDOR_SCALE, VENDOR_EXPONENT) - 120.0).abs() < 1e-9);
     }
 }
