@@ -277,6 +277,11 @@ def main(
         wait_until(lambda: not driver.find_elements(By.ID, "soapTime-10"), 5, "Soap film row not deleted")
         shot(driver, "06-finish")
         dialog_button(driver, "Finish").click()
+        # Finish asks for confirmation; run continues until confirmed
+        wait_text(driver, "This action will end the run of Na-ZY and export the results.", 5)
+        shot(driver, "06b-finish-confirm")
+        assert query_count(work, "SELECT COUNT(*) FROM runs WHERE status = 'running'") == 1
+        driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Finish']").click()
         wait_text(driver, "Exported")
         shot(driver, "07-finished")
         check_export(work)
@@ -341,6 +346,7 @@ def main(
         wait_text(driver, "Connected to", count=3)
         shot(driver, "10-resumed")
         button(driver, "Abort").click()
+        wait_text(driver, "This action will end the run of Crash test as aborted.", 5)
         driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Abort']").click()
         wait_text(driver, "Exported", count=2)
         shot(driver, "11-aborted")

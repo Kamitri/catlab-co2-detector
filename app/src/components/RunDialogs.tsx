@@ -83,11 +83,17 @@ export function FinishDialog({
 }) {
   const form = useRunForm(run.parameters)
   const [busy, setBusy] = useState(false)
+  // Finish ends run: confirmation after soap film times are entered
+  const [confirming, setConfirming] = useState(false)
   const invalid = [...form.errors].some((key) => key.startsWith("soap"))
 
-  async function submit(event: React.FormEvent) {
+  function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (invalid) return
+    if (!invalid) setConfirming(true)
+  }
+
+  async function finish() {
+    setConfirming(false)
     setBusy(true)
     try {
       await onFinish(toParameters(form.values))
@@ -113,6 +119,15 @@ export function FinishDialog({
             </Button>
           </DialogFooter>
         </form>
+        {confirming && (
+          <ConfirmDialog
+            title="Are you sure?"
+            description={`This action will end the run of ${run.parameters.sample} and export the results. This action is irreversible.`}
+            action="Finish"
+            onCancel={() => setConfirming(false)}
+            onConfirm={() => void finish()}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )
