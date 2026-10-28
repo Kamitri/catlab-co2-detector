@@ -100,6 +100,7 @@ export default function App() {
   const finishedRuns = runs.filter((run) => run.status !== "running")
   useTheme(settings?.theme)
   const updater = useUpdater()
+  const updating = updater.status === "downloading" || updater.status === "installing"
   const precision = useMemo(
     () => ({
       massG: decimals(settings?.massPrecisionG ?? DEFAULT_SETTINGS.massPrecisionG),
@@ -127,8 +128,12 @@ export default function App() {
         <div className="ml-auto flex items-center gap-2">
           {updater.update && (
             // Install restarts application, so it waits until run is finished
-            <Button disabled={activeRun !== null || updater.status === "installing"} onClick={() => setDialog("update")}>
-              Update to {updater.update.version}
+            <Button disabled={activeRun !== null || updating} onClick={() => setDialog("update")}>
+              {updater.status === "downloading"
+                ? `Downloading${updater.progress === null ? "" : ` ${Math.round(updater.progress * 100)} %`}`
+                : updater.status === "installing"
+                  ? "Installing"
+                  : `Update to ${updater.update.version}`}
             </Button>
           )}
           <Button variant="ghost" disabled={!settings} onClick={() => setDialog("settings")}>

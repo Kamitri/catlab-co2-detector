@@ -20,18 +20,26 @@ for (const [folder, extension] of [
   }
 }
 
-// Updater installs NSIS setup; signature comes from build with TAURI_SIGNING_PRIVATE_KEY
-const setup = readdirSync(`${bundle}/nsis`).find((name) => name.endsWith("-setup.exe"))
-if (!setup) throw new Error("NSIS setup not found")
+// Updater of installed application looks for windows-x86_64-<installer type> first: application installed
+// with MSI updates with MSI, application installed with setup updates with setup. Entry without installer
+// type is for versions that do not report installer type. Signatures come from build with TAURI_SIGNING_PRIVATE_KEY.
+const platform = (folder, extension) => {
+  const file = readdirSync(`${bundle}/${folder}`).find((name) => name.endsWith(extension))
+  if (!file) throw new Error(`${extension} installer not found`)
+  return {
+    signature: readFileSync(`${bundle}/${folder}/${file}.sig`, "utf8").trim(),
+    url: `https://github.com/${repository}/releases/download/${tag}/${releaseName(file)}`,
+  }
+}
+const setup = platform("nsis", "-setup.exe")
 const manifest = {
   version,
   notes: `CATlab CO₂ Monitor ${version}`,
   pub_date: new Date().toISOString(),
   platforms: {
-    "windows-x86_64": {
-      signature: readFileSync(`${bundle}/nsis/${setup}.sig`, "utf8").trim(),
-      url: `https://github.com/${repository}/releases/download/${tag}/${releaseName(setup)}`,
-    },
+    "windows-x86_64": setup,
+    "windows-x86_64-nsis": setup,
+    "windows-x86_64-msi": platform("msi", ".msi"),
   },
 }
 writeFileSync("release/latest.json", `${JSON.stringify(manifest, null, 2)}\n`)
