@@ -101,6 +101,8 @@ export interface RunResult {
   capacityMgG: number | null
   capacityMmolG: number | null
   breakthroughTimeS: number | null
+  /** Running run before equilibrium: C₀ is maximum above baseline instead of mean of C₀ window. */
+  estimated: boolean
 }
 
 export interface Snapshot {

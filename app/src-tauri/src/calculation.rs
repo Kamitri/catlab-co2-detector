@@ -83,6 +83,8 @@ pub struct RunResult {
     pub capacity_mg_g: f64,
     pub capacity_mmol_g: f64,
     pub breakthrough_time_s: Option<f64>,
+    /// Running run before equilibrium: Co is maximum above baseline instead of mean of Co window.
+    pub estimated: bool,
 }
 
 pub fn mean(values: impl Iterator<Item = f64>) -> f64 {
@@ -150,11 +152,55 @@ pub fn run_stoichiometric_time(run: &Run, series: &Series) -> f64 {
     stoichiometric_time(series, run.parameters.delay_s, baseline_ppm, co_ppm)
 }
 
+/// Equilibrium was reached at some time of run, with rule of `detectEquilibrium` in data.ts checked at each sample:
+/// over last `window_s`, (max - min) / mean is within `band_percent`, data covers at least 90 % of window, and mean
+/// is at least twice baseline (minimum of run up to that sample), so flat baseline before breakthrough does not count.
+pub fn equilibrium_reached(series: &Series, window_s: f64, delay_s: f64, band_percent: f64) -> bool {
+    let (times, values) = (&series.times, &series.concentrations);
+    let mut baseline_ppm = f64::INFINITY;
+    for end_index in 0..times.len() {
+        baseline_ppm = baseline_ppm.min(values[end_index]);
+        let end = times[end_index];
+        if end_index == 0 || end - delay_s < window_s {
+            continue;
+        }
+        let (mut minimum, mut maximum, mut sum, mut count, mut first) = (f64::INFINITY, f64::NEG_INFINITY, 0.0, 0, end);
+        for index in (0..=end_index).rev() {
+            if times[index] < end - window_s {
+                break;
+            }
+            minimum = minimum.min(values[index]);
+            maximum = maximum.max(values[index]);
+            sum += values[index];
+            count += 1;
+            first = times[index];
+        }
+        let mean = sum / f64::from(count);
+        if end - first >= 0.9 * window_s && mean >= 2.0 * baseline_ppm && (maximum - minimum) / mean * 100.0 <= band_percent
+        {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn calculate(run: &Run, series: &Series, blank_time_s: f64) -> RunResult {
+    let baseline_ppm = baseline(series);
+    let co_ppm = inlet_concentration(series, run.parameters.co_window_s, baseline_ppm);
+    calculate_with_co(run, series, blank_time_s, baseline_ppm, co_ppm)
+}
+
+/// Estimate of running run before equilibrium: Co is maximum above baseline, as in original workbook. Mean of Co
+/// window before equilibrium includes breakthrough curve and gives capacity near 0 or below.
+pub fn estimate(run: &Run, series: &Series, blank_time_s: f64) -> RunResult {
+    let baseline_ppm = baseline(series);
+    let maximum = series.concentrations.iter().copied().reduce(f64::max).unwrap_or(f64::NAN);
+    RunResult { estimated: true, ..calculate_with_co(run, series, blank_time_s, baseline_ppm, maximum - baseline_ppm) }
+}
+
+fn calculate_with_co(run: &Run, series: &Series, blank_time_s: f64, baseline_ppm: f64, co_ppm: f64) -> RunResult {
     let parameters = &run.parameters;
     let flow = effective_flow_rate(run);
-    let baseline_ppm = baseline(series);
-    let co_ppm = inlet_concentration(series, parameters.co_window_s, baseline_ppm);
     let end_time_s = series.times.last().copied().unwrap_or(0.0);
     let tb_s = end_time_s - parameters.delay_s;
     let stoichiometric_time_s = stoichiometric_time(series, parameters.delay_s, baseline_ppm, co_ppm);
@@ -202,6 +248,7 @@ pub fn calculate(run: &Run, series: &Series, blank_time_s: f64) -> RunResult {
         capacity_mg_g: 1000.0 * adsorbed_mol * CO2_MOLAR_MASS / parameters.mass_g,
         capacity_mmol_g: 1000.0 * adsorbed_mol / parameters.mass_g,
         breakthrough_time_s,
+        estimated: false,
     }
 }
 
@@ -308,5 +355,33 @@ mod tests {
         assert_eq!(effective_flow_rate(&run(timed)), 75.0);
         let unknown = RunParameters { flow_rate_ml_min: 0.0, ..parameters() };
         assert!(effective_flow_rate(&run(unknown)).is_nan());
+    }
+
+    /// Breakthrough curve rising linearly from 1000 to 31000 ppm over 100 s after 100 s of baseline.
+    fn rising_series(end: u32) -> Series {
+        let times: Vec<f64> = (1..=end).map(f64::from).collect();
+        let concentrations = times.iter().map(|time| 1000.0 + 300.0 * (time - 100.0).clamp(0.0, 100.0)).collect();
+        Series { times, concentrations }
+    }
+
+    #[test]
+    fn equilibrium_needs_stable_window_above_baseline() {
+        // Flat baseline is stable but below twice baseline
+        assert!(!equilibrium_reached(&rising_series(100), 10.0, 0.0, 6.0));
+        // Rising curve varies more than 6 % over window
+        assert!(!equilibrium_reached(&rising_series(190), 10.0, 0.0, 6.0));
+        // Plateau after 200 s is stable
+        assert!(equilibrium_reached(&rising_series(220), 10.0, 0.0, 6.0));
+        assert!(equilibrium_reached(&step_series(), 10.0, 0.0, 6.0));
+    }
+
+    #[test]
+    fn estimate_uses_maximum_as_co() {
+        let series = rising_series(150);
+        let result = estimate(&run(parameters()), &series, 0.0);
+        assert!(result.estimated);
+        assert_eq!(result.co_ppm, 15000.0);
+        assert!(result.capacity_mg_g > 0.0);
+        assert!(!calculate(&run(parameters()), &series, 0.0).estimated);
     }
 }
