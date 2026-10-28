@@ -29,6 +29,11 @@ impl Settings {
     pub fn soap_volume_decimals(&self) -> usize {
         decimals(self.soap_volume_precision_ml)
     }
+
+    /// Retention of measurements outside runs, at least 1 day: 0 would delete measurements outside runs at once.
+    pub fn retention_days(&self) -> u32 {
+        self.retention_days.max(1)
+    }
 }
 
 /// Decimal places of precision step, e.g. 0.0001 -> 4, 0.1 -> 1, 1 -> 0.

@@ -6,7 +6,7 @@ pub mod model;
 pub mod protocol;
 
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
@@ -48,6 +48,8 @@ struct TauriSink {
     app: AppHandle,
     database: Arc<Mutex<Database>>,
     connection: Arc<Mutex<Connection>>,
+    /// Last measurement was not stored; failure is reported once, and again when writing works again.
+    write_failed: AtomicBool,
 }
 
 #[derive(Clone, Serialize)]
@@ -61,8 +63,14 @@ impl Sink for TauriSink {
     fn measurement(&self, timestamp: i64, count: u32) {
         // Lock is released at end of statement, before message() locks database again
         let result = lock(&self.database).insert_measurement(timestamp, count);
-        if let Err(error) = result {
-            self.message("error", &format!("Database write failed: {error}"));
+        match result {
+            Err(error) if !self.write_failed.swap(true, Ordering::Relaxed) => {
+                self.message("error", &format!("Measurements not saved: {error}"));
+            }
+            Ok(()) if self.write_failed.swap(false, Ordering::Relaxed) => {
+                self.message("info", "Measurements saved again");
+            }
+            _ => {}
         }
         let _ = self.app.emit("measurement", MeasurementEvent { timestamp, count });
     }
@@ -73,10 +81,7 @@ impl Sink for TauriSink {
     }
 
     fn message(&self, level: &str, text: &str) {
-        let message = lock(&self.database).insert_message(now_ms(), level, text);
-        if let Ok(message) = message {
-            let _ = self.app.emit("message", message);
-        }
+        log(&self.app, &lock(&self.database), level, text);
     }
 
     fn extra_ports(&self) -> Vec<String> {
@@ -89,10 +94,17 @@ impl Sink for TauriSink {
     }
 }
 
+/// Stores message and shows it in UI. Message that cannot be stored is still shown, for example "Measurements not
+/// saved" when disk is full; its negative id marks it as not stored.
 fn log(app: &AppHandle, database: &Database, level: &str, text: &str) {
-    if let Ok(message) = database.insert_message(now_ms(), level, text) {
-        let _ = app.emit("message", message);
-    }
+    let timestamp = now_ms();
+    let message = database.insert_message(timestamp, level, text).unwrap_or_else(|_| Message {
+        id: -timestamp,
+        timestamp,
+        level: level.into(),
+        text: text.into(),
+    });
+    let _ = app.emit("message", message);
 }
 
 fn set_keep_awake(state: &AppState, active: bool) {
@@ -491,7 +503,7 @@ fn end_run(
         let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
         let verb = if status == RunStatus::Finished { "finished" } else { "aborted" };
         log(app, &database, "info", &format!("Run {verb}: {}", run.parameters.sample));
-        let retention_days = database.settings().map(|settings| settings.retention_days).unwrap_or(30);
+        let retention_days = database.settings().map(|settings| settings.retention_days()).unwrap_or(30);
         let _ = database.prune_measurements(now_ms() - i64::from(retention_days) * DAY_MS);
         prepare_export(app, &database, run)
     };
@@ -625,7 +637,7 @@ pub fn run() {
             std::fs::create_dir_all(&data_folder)?;
             let database = Database::open(&data_folder.join("co2-monitor.db"))?;
             let settings = database.settings()?;
-            database.prune_measurements(now_ms() - i64::from(settings.retention_days) * DAY_MS)?;
+            database.prune_measurements(now_ms() - i64::from(settings.retention_days()) * DAY_MS)?;
             let active_run = database.active_run()?;
             database.insert_message(now_ms(), "info", "Application started")?;
             if let Some(run) = &active_run {
@@ -650,7 +662,12 @@ pub fn run() {
             app.manage(TrayAvailable(tray_available));
             app.manage(state);
 
-            let sink = Arc::new(TauriSink { app: app.handle().clone(), database, connection });
+            let sink = Arc::new(TauriSink {
+                app: app.handle().clone(),
+                database,
+                connection,
+                write_failed: AtomicBool::new(false),
+            });
             acquisition::spawn(sink, acquisition::Timing::from_environment(), Arc::new(AtomicBool::new(false)));
             Ok(())
         })
