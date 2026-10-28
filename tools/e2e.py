@@ -235,6 +235,16 @@ def main(
         wait_until(lambda: co2_value(driver) > 15000, message="Breakthrough not reached")
         shot(driver, "04-running")
 
+        # History during run: result of running run is refreshed while measurements arrive
+        driver.find_element(By.XPATH, "//button[normalize-space()='History']").click()
+        driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
+        points = "return document.evaluate(\"//dt[.='# data points']/following-sibling::dd[1]\", document, null, 9, null).singleNodeValue?.textContent"
+        wait_until(lambda: driver.execute_script(points), 5, "Result of running run not shown")
+        first_points = driver.execute_script(points)
+        wait_until(lambda: driver.execute_script(points) != first_points, 8, "Result of running run not refreshed")
+        print(f"History during run: # data points {first_points} -> {driver.execute_script(points)}")
+        driver.find_element(By.XPATH, "//button[normalize-space()='Live']").click()
+
         # Device stops replying for 2 s, then recovers
         frozen = time.monotonic()
         os.kill(simulator.pid, signal.SIGSTOP)
@@ -463,6 +473,9 @@ def main(
         driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Restore original']").click()
         wait_until(lambda: query_count(work, edited_rows) == 0, 5, "Edited data not removed")
         print("Data editor: edit, Save, Restore original")
+        # Closing dialogs cover page until their animation ends
+        open_dialogs = "return document.querySelectorAll('[role=dialog], [role=alertdialog]').length"
+        wait_until(lambda: driver.execute_script(open_dialogs) == 0, 5, "Data editor not closed")
 
         # Reset to defaults fills form with default values; Cancel keeps saved settings
         button(driver, "Settings").click()

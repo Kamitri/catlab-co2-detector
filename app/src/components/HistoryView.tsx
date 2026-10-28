@@ -163,6 +163,14 @@ function RunDetail({
   )
 }
 
+/** Refresh interval of result and chart of running run (ms). */
+const RUNNING_REFRESH_MS = 5000
+
+async function loadChartData(id: number): Promise<ChartData> {
+  const [runData, markers] = await Promise.all([api.getRunData(id), api.getMarkers(id)])
+  return { series: { x: runData.times, y: runData.values }, markers }
+}
+
 export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   const [runs, setRuns] = useState<Run[]>([])
   const [results, setResults] = useState<Record<number, RunResult>>({})
@@ -204,13 +212,27 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   useEffect(() => {
     const missing = shown.filter((run) => !data[run.id])
     if (missing.length === 0) return
-    void Promise.all(
-      missing.map(async (run) => {
-        const runData = await api.getRunData(run.id)
-        return [run.id, { series: { x: runData.times, y: runData.values }, markers: await api.getMarkers(run.id) }] as const
-      }),
-    ).then((entries) => setData((current) => ({ ...current, ...Object.fromEntries(entries) })))
+    void Promise.all(missing.map(async (run) => [run.id, await loadChartData(run.id)] as const)).then((entries) =>
+      setData((current) => ({ ...current, ...Object.fromEntries(entries) })),
+    )
   }, [shown, data])
+
+  // Result and chart data of running run change with each measurement; refreshed while History is open
+  const runningId = runs.find((run) => run.status === "running")?.id
+  useEffect(() => {
+    if (runningId === undefined) return
+    const timer = window.setInterval(() => {
+      api.getRunResult(runningId).then(
+        (result) => setResults((current) => ({ ...current, [runningId]: result })),
+        () => undefined,
+      )
+      loadChartData(runningId).then(
+        (chartData) => setData((current) => (current[runningId] ? { ...current, [runningId]: chartData } : current)),
+        () => undefined,
+      )
+    }, RUNNING_REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [runningId])
 
   const overlay = shown.length > 1
   const palette = chartPalette(useDarkMode())
@@ -243,8 +265,9 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
     [shown, data, results, overlay, palette],
   )
 
-  // Shown runs and their loaded data identify chart data; count of traces alone repeats between runs
-  const dataRevision = `${shown.map((run) => `${run.id}:${data[run.id] ? 1 : 0}`).join(",")}|${overlay}`
+  // Shown runs and their point counts identify chart data: count of traces alone repeats between runs, and point
+  // count of running run increases with each refresh
+  const dataRevision = `${shown.map((run) => `${run.id}:${data[run.id]?.series.x.length ?? 0}`).join(",")}|${overlay}`
 
   const lastTime = Math.max(
     0,
