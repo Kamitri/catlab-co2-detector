@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
 import type { RunParameters } from "@/lib/api"
-import { toFormValues } from "@/lib/runForm"
+import { toFormValues, toParameters } from "@/lib/runForm"
 import { stepValue } from "@/lib/step"
 import { RUN_TIME_AXIS, timeAxisEnd, timeTicks } from "@/lib/view"
 
@@ -103,5 +103,28 @@ describe("decimals", () => {
     expect(decimals(0.25)).toBe(2)
     expect(decimals(1)).toBe(0)
     expect(decimals(0)).toBe(0)
+  })
+})
+
+describe("run form round trip", () => {
+  it("keeps stored parameters unchanged, so Save of unedited run stays disabled", () => {
+    const stored: RunParameters = {
+      sample: "Na-ZY",
+      operator: "Test",
+      note: "",
+      flowRateMlMin: 0,
+      flowMeasurements: [],
+      soapVolumeMl: 2.5,
+      soapTimesS: [2.62, 2.75, 2.81],
+      massG: 0.12345,
+      densityGMl: 1,
+      pressureBar: 1,
+      temperatureC: 30,
+      delayS: 0,
+      coWindowS: 300,
+      blankRunId: null,
+    }
+    const decimals = { massG: 2, soapVolumeMl: 0 }
+    expect(JSON.stringify(toParameters(toFormValues(stored, decimals)))).toBe(JSON.stringify(stored))
   })
 })
