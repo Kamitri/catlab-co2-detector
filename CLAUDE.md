@@ -14,4 +14,4 @@
 - Forms use `FormGroup`, `FormGrid` and `FormRow` from `app/src/components/FormLayout.tsx`: label on the left, field on the right, fields grouped by topic.
 - Numbers use `NumberInput`: right-aligned, unit inside the field, not in the label.
 - Controls are 28 px tall (`h-7`) with 13 px text; fields have filled background without border at rest (`FIELD_CLASS`).
-- Charts have fixed default axes (`app/src/lib/view.ts`): time 0–5000 s, extended by 1000 s near end; CO₂ 0–40000 ppm. Zoom, pan, and Axes keep user view until Reset view.
+- Charts have fixed default axes (`app/src/lib/view.ts`): time 0–5000 s, extended by 1000 s near end; during run 0–2000 s, extended by 500 s; CO₂ 0–40000 ppm. Zoom, pan, and Axes keep user view until Reset view.

@@ -13,14 +13,14 @@ const ROW_HEIGHT = 28
 const OVERSCAN = 10
 const UNDO_LIMIT = 100
 
-/** Editable cells of row, as typed text: elapsed time (s) and CO₂ (ppm). */
+/** Editable cells of row, as typed text: elapsed time (s) and raw signal N. CO₂ follows from raw signal. */
 interface Row {
   time: string
-  value: string
+  count: string
 }
 
 type Column = 0 | 1
-const KEYS: (keyof Row)[] = ["time", "value"]
+const KEYS: (keyof Row)[] = ["time", "count"]
 
 function validCell(row: Row, column: Column): boolean {
   const number = parseNumber(row[KEYS[column]])
@@ -31,13 +31,11 @@ function toText(number: number): string {
   return String(number)
 }
 
-/** Shown text of cell: time with up to 3 decimals, CO₂ with 2; editing and copying use full value. */
+/** Shown text of cell: time with up to 3 decimals, raw signal with up to 2; editing and copying use full value. */
 function display(text: string, column: Column): string {
   const number = parseNumber(text)
   if (!Number.isFinite(number)) return text
-  return column === 0
-    ? number.toLocaleString("en-US", { maximumFractionDigits: 3, useGrouping: false })
-    : number.toFixed(2)
+  return number.toLocaleString("en-US", { maximumFractionDigits: column === 0 ? 3 : 2, useGrouping: false })
 }
 
 /**
@@ -65,7 +63,7 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
 
   useEffect(() => {
     void api.getRunData(run.id).then((data) => {
-      setRows(data.times.map((time, index) => ({ time: toText(time), value: toText(data.values[index]) })))
+      setRows(data.times.map((time, index) => ({ time: toText(time), count: toText(data.counts[index]) })))
       setEdited(data.edited)
     })
   }, [run.id])
@@ -101,6 +99,12 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
     )
   }
   const current = rows
+
+  // CO₂ (ppm) of row with conversion of run, as in calculation and export
+  const co2Text = (row: Row) => {
+    const count = parseNumber(row.count)
+    return Number.isFinite(count) ? (run.conversionScale * Math.exp(run.conversionExponent * count)).toFixed(2) : ""
+  }
 
   const first = Math.min(anchor, cursor.row)
   const last = Math.max(anchor, cursor.row)
@@ -154,9 +158,9 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
     const next = current[index + 1]
     const time = parseNumber(here?.time ?? "0")
     const nextTime = next ? parseNumber(next.time) : Number.NaN
-    // New row between selected row and next row, with value of selected row
+    // New row between selected row and next row, with raw signal of selected row
     const newTime = Number.isFinite(nextTime) ? (time + nextTime) / 2 : time + 1
-    const row = { time: toText(Number.isFinite(newTime) ? newTime : 0), value: here?.value ?? "" }
+    const row = { time: toText(Number.isFinite(newTime) ? newTime : 0), count: here?.count ?? "" }
     change([...current.slice(0, index + 1), row, ...current.slice(index + 1)])
     moveTo(index + 1, cursor.column)
   }
@@ -174,12 +178,12 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
     lines.forEach((line, offset) => {
       const cells = line.split(/\t|;|,(?=\s*-?\d)/).map((cell) => cell.trim())
       const index = cursor.row + offset
-      const row = { ...(next[index] ?? { time: "", value: "" }) }
+      const row = { ...(next[index] ?? { time: "", count: "" }) }
       if (cursor.column === 0) {
         row.time = cells[0] ?? row.time
-        if (cells.length > 1) row.value = cells[1]
+        if (cells.length > 1) row.count = cells[1]
       } else {
-        row.value = cells[0] ?? row.value
+        row.count = cells[0] ?? row.count
       }
       next[index] = row
     })
@@ -260,7 +264,7 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
       await api.saveRunData(
         run.id,
         current.map((row) => parseNumber(row.time)),
-        current.map((row) => parseNumber(row.value)),
+        current.map((row) => parseNumber(row.count)),
       )
       onSaved()
     } catch (error) {
@@ -282,7 +286,7 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
 
   const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
   const end = Math.min(current.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN)
-  const columns = "grid grid-cols-[64px_120px_96px_minmax(0,1fr)]"
+  const columns = "grid grid-cols-[64px_120px_96px_minmax(0,1fr)_minmax(0,1fr)]"
 
   const cell = (index: number, column: Column) => {
     const row = current[index]
@@ -349,6 +353,7 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
             <div className="px-2 py-1.5 text-right">#</div>
             <div className="px-2 py-1.5 text-right">t (s)</div>
             <div className="px-2 py-1.5 text-right">Time</div>
+            <div className="px-2 py-1.5 text-right">Raw signal</div>
             <div className="px-2 py-1.5 text-right">
               CO<sub>2</sub> (ppm)
             </div>
@@ -365,7 +370,7 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
               event.preventDefault()
               const text = current
                 .slice(first, last + 1)
-                .map((row) => `${row.time}\t${row.value}`)
+                .map((row) => `${row.time}\t${row.count}\t${co2Text(row)}`)
                 .join("\n")
               event.clipboardData.setData("text/plain", text)
             }}
@@ -395,6 +400,9 @@ export function DataEditor({ run, onClose, onSaved }: { run: Run; onClose: () =>
                         {Number.isFinite(time) ? formatClock(run.startedAt + time * 1000) : ""}
                       </div>
                       {cell(index, 1)}
+                      <div className="flex h-7 items-center justify-end px-2 text-muted-foreground tabular-nums">
+                        {co2Text(row)}
+                      </div>
                     </div>
                   )
                 })}

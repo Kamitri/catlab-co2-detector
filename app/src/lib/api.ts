@@ -52,6 +52,8 @@ export interface Run {
 /** Data of run: elapsed time (s) and CO₂ (ppm). */
 export interface RunData {
   times: number[]
+  /** Raw signal N. */
+  counts: number[]
   values: number[]
   edited: boolean
 }
@@ -126,8 +128,8 @@ export const api = {
   getMarkers: (id: number) => invoke<Marker[]>("get_markers", { id }),
   getRunResult: (id: number) => invoke<RunResult>("get_run_result", { id }),
   getRunData: (id: number) => invoke<RunData>("get_run_data", { id }),
-  /** Saves edited data; measurements stay unchanged. */
-  saveRunData: (id: number, times: number[], values: number[]) => invoke<void>("save_run_data", { id, times, values }),
+  /** Saves edited data (time and raw signal; CO₂ follows from raw signal); measurements stay unchanged. */
+  saveRunData: (id: number, times: number[], counts: number[]) => invoke<void>("save_run_data", { id, times, counts }),
   /** Removes edited data; run uses measurements again. */
   restoreRunData: (id: number) => invoke<void>("restore_run_data", { id }),
   exportRun: (id: number) => invoke<string>("export_run", { id }),

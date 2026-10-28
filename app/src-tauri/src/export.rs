@@ -216,7 +216,7 @@ impl<'a> BlockRow<'a> {
     }
 }
 
-// Columns: data A to H, parameter block J to N, soap film times P to R with chart below
+// Columns: data A to H, parameter block J to N with chart below, soap film times P to R
 const BLOCK_GROUP: u16 = 9;
 const BLOCK_LABEL: u16 = 10;
 const BLOCK_VALUE: u16 = 11;
@@ -507,6 +507,10 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     }
     sheet.set_row_height(0, 42)?;
     sheet.set_freeze_panes(1, 0)?;
+    // Time, raw signal, Δt and C − baseline are hidden: intermediate columns, shown with Unhide in Excel
+    for column in [1, 2, 4, 5] {
+        sheet.set_column_hidden(column)?;
+    }
     let ratio_format = styles.calculated.clone().set_num_format("0.0000");
     let concentration_format = styles.data.clone().set_num_format("0.00");
     let above_format = styles.calculated.clone().set_num_format("0.00");
@@ -521,9 +525,9 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         let clock = run.started_at + (time * 1000.0).round() as i64;
         sheet.write_number_with_format(row, 1, excel_date(clock), &styles.data_clock)?;
         match &input.data.counts {
-            // Measured data: CO2 is live formula of detector count N
+            // CO2 is live formula of raw signal N
             Some(counts) => {
-                sheet.write_number_with_format(row, 2, f64::from(counts[index]), &styles.data)?;
+                sheet.write_number_with_format(row, 2, counts[index], &styles.data)?;
                 sheet.write_formula_with_format(
                     row,
                     3,
@@ -531,7 +535,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
                     &concentration_format,
                 )?;
             }
-            // Edited data has CO2 values without detector count
+            // Data edited before raw signal was editable has CO2 values only
             None => {
                 sheet.write_blank(row, 2, &styles.data)?;
                 sheet.write_number_with_format(row, 3, value, &concentration_format)?;
@@ -585,8 +589,8 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         chart.x_axis().set_name("t (s)");
         chart.y_axis().set_name("CO₂ (ppmv)");
         chart.set_width(720).set_height(420);
-        // Below soap film table, beside parameter table
-        sheet.insert_chart(TABLE_ROW + soap_rows + 1, SOAP_INDEX, &chart)?;
+        // Below parameter table
+        sheet.insert_chart(output_end + 2, BLOCK_GROUP, &chart)?;
     }
 
     for (local, reference) in names {
@@ -684,11 +688,14 @@ mod tests {
         };
         let measured = RunData::measured(&run, &measurements);
         let result = calculate(&run, &measured.series, 0.0);
-        // Edited data: CO2 values without detector counts
-        let edited = RunData::edited(Series {
-            times: measured.series.times.clone(),
-            concentrations: measured.series.concentrations.iter().map(|value| value + 10.0).collect(),
-        });
+        // Data edited before raw signal was editable: CO2 values only
+        let edited = RunData::edited(
+            Series {
+                times: measured.series.times.clone(),
+                concentrations: measured.series.concentrations.iter().map(|value| value + 10.0).collect(),
+            },
+            None,
+        );
         let path = directory.path().join("test.xlsx");
         let input = |data| ExportInput {
             run: &run,
