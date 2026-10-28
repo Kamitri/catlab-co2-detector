@@ -15,7 +15,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 use acquisition::{Sink, now_ms};
-use calculation::{RunData, RunResult, Series, calculate, run_stoichiometric_time};
+use calculation::{RunData, RunResult, Series, calculate, equilibrium_reached, estimate, run_stoichiometric_time};
 use db::Database;
 use model::{Connection, Marker, Measurements, Message, Run, RunParameters, RunStatus, Settings};
 use protocol::{concentration, raw_signal};
@@ -351,11 +351,20 @@ fn restore_run_data(app: AppHandle, state: State<AppState>, id: i64) -> CommandR
     Ok(())
 }
 
+/// Result of run; running run before equilibrium gets estimate (Co from maximum). Export always uses Co window.
 #[tauri::command]
 fn get_run_result(state: State<AppState>, id: i64) -> CommandResult<RunResult> {
     let database = lock(&state.database);
     let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
-    Ok(run_result(&database, &run)?.0)
+    let (result, _, data) = run_result(&database, &run)?;
+    if run.status == RunStatus::Running {
+        let band_percent = database.settings().map_err(error_text)?.equilibrium_band_percent;
+        let parameters = &run.parameters;
+        if !equilibrium_reached(&data.series, parameters.co_window_s, parameters.delay_s, band_percent) {
+            return Ok(estimate(&run, &data.series, result.blank_time_s));
+        }
+    }
+    Ok(result)
 }
 
 /// Data for one export, collected under database lock.

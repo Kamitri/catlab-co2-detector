@@ -11,10 +11,22 @@ type Columns = 1 | 2
 const ColumnsContext = createContext<Columns>(1)
 
 /** Section of form with small uppercase title; sections after first have top border. */
-export function FormGroup({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
+export function FormGroup({
+  title,
+  action,
+  children,
+}: {
+  title: React.ReactNode
+  /** Control at right end of title, for example Clear. */
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <section className="border-t pt-3 first:border-t-0 first:pt-0">
-      <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <div className="mb-2 flex min-h-5 items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+        {action}
+      </div>
       {children}
     </section>
   )

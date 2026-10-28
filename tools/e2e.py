@@ -220,6 +220,8 @@ def main(
         fill(driver, "sample", "Na-ZY")
         fill(driver, "operator", "Test")
         fill(driver, "massG", "0.56")
+        # Flow rate known during run, for capacity in History
+        fill(driver, "soapTime-0", "2.62")
         # Windows scaled to fast poll interval: data of 1 s real time covers about 400 s of run
         fill(driver, "coWindowS", "1")
         # Mass and soap film volume show decimal places of balance and flowmeter after field loses focus
@@ -241,8 +243,12 @@ def main(
         points = "return document.evaluate(\"//dt[.='# data points']/following-sibling::dd[1]\", document, null, 9, null).singleNodeValue?.textContent"
         wait_until(lambda: driver.execute_script(points), 5, "Result of running run not shown")
         first_points = driver.execute_script(points)
+        # Before equilibrium, capacity is estimated from maximum and marked with warning in table and result
+        estimated = "return document.querySelectorAll('[aria-label=\"Estimated capacity\"]').length"
+        assert driver.execute_script(estimated) == 2, driver.execute_script(estimated)
+        shot(driver, "04b-history-running")
         wait_until(lambda: driver.execute_script(points) != first_points, 8, "Result of running run not refreshed")
-        print(f"History during run: # data points {first_points} -> {driver.execute_script(points)}")
+        print(f"History during run: # data points {first_points} -> {driver.execute_script(points)}, estimated capacity")
         driver.find_element(By.XPATH, "//button[normalize-space()='Live']").click()
 
         # Device stops replying for 2 s, then recovers
@@ -256,6 +262,12 @@ def main(
         wait_text(driver, "Equilibrium reached", 60)
         shot(driver, "05-equilibrium")
         button(driver, "Finish").click()
+        # Clear empties all times and keeps rows
+        fill(driver, "soapTime-0", "9.99")
+        fill(driver, "soapTime-1", "9.99")
+        dialog_button(driver, "Clear").click()
+        times = "return [...document.querySelectorAll('[id^=soapTime-]')].map((input) => input.value)"
+        assert driver.execute_script(times) == [""] * len(SOAP_TIMES), driver.execute_script(times)
         for index, value in enumerate(SOAP_TIMES):
             fill(driver, f"soapTime-{index}", value)
         # Add creates row 11; its delete button removes it again
@@ -265,6 +277,11 @@ def main(
         wait_until(lambda: not driver.find_elements(By.ID, "soapTime-10"), 5, "Soap film row not deleted")
         shot(driver, "06-finish")
         dialog_button(driver, "Finish").click()
+        # Finish asks for confirmation; run continues until confirmed
+        wait_text(driver, "This action will end the run of Na-ZY and export the results.", 5)
+        shot(driver, "06b-finish-confirm")
+        assert query_count(work, "SELECT COUNT(*) FROM runs WHERE status = 'running'") == 1
+        driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Finish']").click()
         wait_text(driver, "Exported")
         shot(driver, "07-finished")
         check_export(work)
@@ -329,6 +346,7 @@ def main(
         wait_text(driver, "Connected to", count=3)
         shot(driver, "10-resumed")
         button(driver, "Abort").click()
+        wait_text(driver, "This action will end the run of Crash test as aborted.", 5)
         driver.find_element(By.XPATH, "//div[@role='alertdialog']//button[normalize-space()='Abort']").click()
         wait_text(driver, "Exported", count=2)
         shot(driver, "11-aborted")

@@ -213,8 +213,8 @@ export default function App() {
       )}
       {dialog === "abort" && activeRun && (
         <ConfirmDialog
-          title="Abort run?"
-          description={activeRun.parameters.sample}
+          title="Are you sure?"
+          description={`This action will end the run of ${activeRun.parameters.sample} as aborted. This action is irreversible.`}
           action="Abort"
           destructive
           onCancel={() => setDialog(null)}

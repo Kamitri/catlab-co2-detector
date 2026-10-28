@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { GripVertical } from "lucide-react"
+import { GripVertical, TriangleAlert } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { Chart, type ChartTrace, type DragMode } from "@/components/Chart"
@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useChartView } from "@/hooks/useChartView"
 import { useRunForm } from "@/hooks/useRunForm"
 import { api, type Marker, type Run, type RunResult } from "@/lib/api"
@@ -33,8 +34,27 @@ interface ChartData {
   markers: Marker[]
 }
 
+/** Warning beside estimated capacity of running run, with explanation on hover. */
+function EstimateWarning() {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span aria-label="Estimated capacity" className="inline-flex text-amber-600 dark:text-amber-400">
+            <TriangleAlert className="size-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-72">
+          Equilibrium not established. Currently using the maximum value as the endpoint instead of the mean of the C
+          <sub>0</sub> window.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 function ResultTable({ result }: { result: RunResult }) {
-  const rows: [React.ReactNode, string][] = [
+  const rows: [React.ReactNode, React.ReactNode][] = [
     ["# data points", formatInteger(result.sampleCount)],
     ["Missing data", `${formatInteger(result.missingTimeS)} s`],
     ["Flow rate", `${formatNumber(result.flowRateMlMin)} mL/min`],
@@ -46,7 +66,13 @@ function ResultTable({ result }: { result: RunResult }) {
     ["Blank time", `${formatNumber(result.blankTimeS, 1)} s`],
     ["GHSV", `${formatInteger(result.ghsvPerH)} 1/h`],
     [<>CO<sub>2</sub> adsorbed</>, `${formatNumber(result.adsorbedVolumeL === null ? null : result.adsorbedVolumeL * 1000, 3)} mL`],
-    ["Capacity", `${formatNumber(result.capacityMgG)} mg/g (${formatNumber(result.capacityMmolG, 3)} mmol/g)`],
+    [
+      "Capacity",
+      <span className="inline-flex items-center gap-1.5">
+        {result.estimated && <EstimateWarning />}
+        {`${formatNumber(result.capacityMgG)} mg/g (${formatNumber(result.capacityMmolG, 3)} mmol/g)`}
+      </span>,
+    ],
   ]
   return (
     <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
@@ -393,6 +419,9 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
                 data-state={focused === run.id ? "selected" : undefined}
                 className={cn(
                   "cursor-default",
+                  // Estimated capacity: yellow as warning messages
+                  results[run.id]?.estimated &&
+                    "bg-amber-50 hover:bg-amber-100 data-[state=selected]:bg-amber-100 dark:bg-amber-400/10 dark:hover:bg-amber-400/15 dark:data-[state=selected]:bg-amber-400/20",
                   moving?.id === run.id && "opacity-50",
                   moving?.target === index && "shadow-[inset_0_2px_0_var(--primary)]",
                   moving?.target === runs.length && index === runs.length - 1 && "shadow-[inset_0_-2px_0_var(--primary)]",
@@ -430,7 +459,12 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
                 <TableCell className="text-right tabular-nums">
                   {formatDuration(((run.finishedAt ?? Date.now()) - run.startedAt) / 1000)}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{formatNumber(results[run.id]?.capacityMgG)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className="inline-flex items-center gap-1.5">
+                    {results[run.id]?.estimated && <EstimateWarning />}
+                    {formatNumber(results[run.id]?.capacityMgG)}
+                  </span>
+                </TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(results[run.id]?.capacityMmolG, 3)}</TableCell>
               </TableRow>
             ))}

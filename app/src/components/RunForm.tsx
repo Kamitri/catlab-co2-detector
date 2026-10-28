@@ -65,7 +65,27 @@ export function SoapFilmFields({
     )
 
   return (
-    <FormGroup title="Flow rate">
+    <FormGroup
+      title="Flow rate"
+      action={
+        // Empties all times and keeps rows; X deletes one row
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="text-xs"
+          disabled={values.soapTimesS.every((text) => text.trim() === "")}
+          onClick={() =>
+            set(
+              "soapTimesS",
+              values.soapTimesS.map(() => ""),
+            )
+          }
+        >
+          Clear
+        </Button>
+      }
+    >
       <FormGrid columns={columns}>
         <FormRow label="Volume" id="soapVolumeMl" invalid={showValidation && errors.has("soapVolumeMl")} wide>
           <div className="w-35">
