@@ -82,8 +82,12 @@ function RunDetail({
 
   async function save() {
     if (form.errors.size > 0) return
-    await api.updateRun(run.id, toParameters(form.values))
-    onSaved()
+    try {
+      await api.updateRun(run.id, toParameters(form.values))
+      onSaved()
+    } catch (error) {
+      void api.logMessage("error", `Run not saved: ${String(error)}`)
+    }
   }
 
   async function exportRun() {
@@ -180,8 +184,11 @@ export function HistoryView({ refreshKey }: { refreshKey: unknown }) {
   const load = useCallback(async () => {
     const list = await api.listRuns()
     setRuns(list)
-    const entries = await Promise.all(list.map(async (run) => [run.id, await api.getRunResult(run.id)] as const))
-    setResults(Object.fromEntries(entries))
+    // Run without result (calculation failed) shows empty result instead of keeping entire list from loading
+    const entries = await Promise.all(
+      list.map(async (run) => [run.id, await api.getRunResult(run.id).catch(() => null)] as const),
+    )
+    setResults(Object.fromEntries(entries.filter((entry): entry is [number, RunResult] => entry[1] !== null)))
     setData({})
   }, [])
 

@@ -1,3 +1,4 @@
+import { decimals } from "@/lib/settings"
 import { describe, expect, it } from "vitest"
 
 import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
@@ -91,5 +92,16 @@ describe("timeTicks", () => {
     expect(timeTicks(1000)).toEqual({ label: 100, grid: 20 })
     expect(timeTicks(3000)).toEqual({ label: 200, grid: 50 })
     expect(timeTicks(20000)).toEqual({ label: 2000, grid: 500 })
+  })
+})
+
+describe("decimals", () => {
+  it("shows every multiple of precision step", () => {
+    expect(decimals(0.0001)).toBe(4)
+    expect(decimals(0.1)).toBe(1)
+    expect(decimals(0.5)).toBe(1)
+    expect(decimals(0.25)).toBe(2)
+    expect(decimals(1)).toBe(0)
+    expect(decimals(0)).toBe(0)
   })
 })

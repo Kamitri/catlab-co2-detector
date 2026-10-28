@@ -16,7 +16,10 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "light",
 }
 
-/** Decimal places of precision step, same as `decimals` in model.rs: 0.0001 -> 4, 0.1 -> 1. */
+/** Decimal places that show every multiple of precision step, same as `decimals` in model.rs: 0.0001 -> 4, 0.5 -> 1. */
 export function decimals(step: number): number {
-  return step > 0 && Number.isFinite(step) ? Math.min(8, Math.max(0, Math.round(-Math.log10(step)))) : 0
+  if (!(step > 0) || !Number.isFinite(step)) return 0
+  let places = 0
+  while (places < 8 && Math.abs(Math.round(step * 10 ** places) - step * 10 ** places) > 1e-9 * 10 ** places) places++
+  return places
 }

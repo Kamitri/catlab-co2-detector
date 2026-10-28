@@ -9,6 +9,7 @@ import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import manualUrl from "@/assets/manual.pdf?url"
+import { api } from "@/lib/api"
 
 // Legacy build of pdf.js: runs in WebKitGTK of Linux as well as WebView2 of Windows
 GlobalWorkerOptions.workerSrc = workerUrl
@@ -24,7 +25,11 @@ const A4_RATIO = 297 / 210
 let manual: Promise<PDFDocumentProxy> | null = null
 
 function loadManual(): Promise<PDFDocumentProxy> {
-  manual ??= getDocument({ url: manualUrl }).promise
+  // Failed load is not kept: next visit of Manual loads again
+  manual ??= getDocument({ url: manualUrl }).promise.catch((error: unknown) => {
+    manual = null
+    throw error
+  })
   return manual
 }
 
@@ -35,7 +40,7 @@ export function ManualView() {
   const [width, setWidth] = useState(0)
 
   useEffect(() => {
-    void loadManual().then(setDocument)
+    loadManual().then(setDocument, (error: unknown) => void api.logMessage("error", `Manual not loaded: ${String(error)}`))
   }, [])
 
   useLayoutEffect(() => {

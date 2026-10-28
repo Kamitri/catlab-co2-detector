@@ -36,9 +36,21 @@ impl Settings {
     }
 }
 
-/// Decimal places of precision step, e.g. 0.0001 -> 4, 0.1 -> 1, 1 -> 0.
+/// Decimal places that show every multiple of precision step, e.g. 0.0001 -> 4, 0.5 -> 1, 1 -> 0. Rounding of
+/// -log10(step) would give 0 places for 0.5 and round 2.5 mL to 3 mL.
 pub fn decimals(step: f64) -> usize {
-    if step > 0.0 && step.is_finite() { (-step.log10()).round().clamp(0.0, 8.0) as usize } else { 0 }
+    if !(step > 0.0 && step.is_finite()) {
+        return 0;
+    }
+    let mut places = 0;
+    while places < 8 {
+        let scaled = step * 10f64.powi(places);
+        if (scaled.round() - scaled).abs() <= 1e-9 * 10f64.powi(places) {
+            break;
+        }
+        places += 1;
+    }
+    places as usize
 }
 
 impl Default for Settings {
@@ -189,5 +201,8 @@ mod tests {
         assert_eq!(decimals(0.1), 1);
         assert_eq!(decimals(1.0), 0);
         assert_eq!(decimals(0.0), 0);
+        assert_eq!(decimals(0.5), 1);
+        assert_eq!(decimals(0.25), 2);
+        assert_eq!(decimals(5.0), 0);
     }
 }
