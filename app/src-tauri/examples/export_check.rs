@@ -61,6 +61,7 @@ fn main() {
             blank_label: None,
             mass_decimals: 4,
             soap_volume_decimals: 1,
+            soap_time_decimals: 2,
             cached_results: false,
         }],
     )

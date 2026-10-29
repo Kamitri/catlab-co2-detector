@@ -51,12 +51,12 @@ pub fn file_name(pattern: &str, run: &Run) -> String {
     sanitize(&name)
 }
 
-/// Returns path in folder that does not exist yet: name.xlsx, name-2.xlsx, ...
-pub fn unique_path(folder: &Path, name: &str) -> PathBuf {
-    let mut path = folder.join(format!("{name}.xlsx"));
+/// Returns path in folder that does not exist yet: name.xlsx, name-2.xlsx, ... (extension without point)
+pub fn unique_path(folder: &Path, name: &str, extension: &str) -> PathBuf {
+    let mut path = folder.join(format!("{name}.{extension}"));
     let mut index = 2;
     while path.exists() {
-        path = folder.join(format!("{name}-{index}.xlsx"));
+        path = folder.join(format!("{name}-{index}.{extension}"));
         index += 1;
     }
     path
@@ -112,6 +112,8 @@ pub struct ExportInput<'a> {
     /// Decimal places of sorbent mass and soap film volume, from precision in Settings.
     pub mass_decimals: usize,
     pub soap_volume_decimals: usize,
+    /// Decimal places of soap film times, from precision of timer in Settings.
+    pub soap_time_decimals: usize,
     /// Write cached formula results; disable in tests to force recalculation.
     pub cached_results: bool,
 }
@@ -299,7 +301,8 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
         sheet.write_number_with_format(row, SOAP_INDEX, f64::from(index + 1), &styles.block)?;
         let flow_format = styles.block.clone().set_num_format("0.00");
         if let Some(time) = parameters.soap_times_s.get(index as usize) {
-            sheet.write_number_with_format(row, SOAP_TIME, *time, &styles.input)?;
+            let time_format = styles.input.clone().set_num_format(decimal_format(input.soap_time_decimals));
+            sheet.write_number_with_format(row, SOAP_TIME, *time, &time_format)?;
             let flow = soap_flow_rate(parameters.soap_volume_ml, *time);
             let formula = Formula::new(format!("=60*SoapVolume/{}{}", column_letter(SOAP_TIME), row + 1));
             sheet.write_formula_with_format(row, SOAP_FLOW, cached(formula, flow), &flow_format)?;
@@ -328,7 +331,7 @@ fn write_run_sheet(workbook: &mut Workbook, input: &ExportInput, name: &str) -> 
     let nominal = parameters.flow_rate_ml_min > 0.0;
     let mut inputs = vec![BlockRow::input("Soap film volume", parameters.soap_volume_ml, "mL", "SoapVolume")];
     if nominal {
-        inputs.push(BlockRow::input("Nominal flow rate", parameters.flow_rate_ml_min, "mL/min", "NominalFlowRate"));
+        inputs.push(BlockRow::input("Entered flow rate", parameters.flow_rate_ml_min, "mL/min", "NominalFlowRate"));
     }
     inputs.extend([
         BlockRow::input("Mass of sorbent", parameters.mass_g, "g", "SampleMass"),
@@ -653,9 +656,9 @@ mod tests {
     #[test]
     fn unique_path_does_not_overwrite() {
         let directory = tempfile::tempdir().unwrap();
-        let first = unique_path(directory.path(), "run");
+        let first = unique_path(directory.path(), "run", "xlsx");
         std::fs::write(&first, b"x").unwrap();
-        let second = unique_path(directory.path(), "run");
+        let second = unique_path(directory.path(), "run", "xlsx");
         assert_eq!(second.file_name().unwrap(), "run-2.xlsx");
     }
 
@@ -704,6 +707,7 @@ mod tests {
             blank_label: None,
             mass_decimals: 4,
             soap_volume_decimals: 1,
+            soap_time_decimals: 2,
             cached_results: true,
         };
         // Two runs with same date and sample get separate sheet names

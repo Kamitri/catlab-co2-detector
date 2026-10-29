@@ -6,15 +6,17 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { api, type Settings, type Theme } from "@/lib/api"
+import { api, type FlowEntry, type Settings, type Theme } from "@/lib/api"
 import { parseNumber } from "@/lib/runForm"
 import { DEFAULT_SETTINGS } from "@/lib/settings"
 
 const NUMBER_KEYS = [
   "coWindowS",
-  "equilibriumBandPercent",
+  "equilibriumVariationPpm",
   "massPrecisionG",
   "soapVolumePrecisionMl",
+  "soapTimePrecisionS",
+  "soapTimeCount",
   "conversionScale",
   "conversionExponent",
   "retentionDays",
@@ -40,6 +42,7 @@ export function SettingsDialog({
   const [pattern, setPattern] = useState(settings.fileNamePattern)
   const [ports, setPorts] = useState(settings.extraPorts.join(", "))
   const [theme, setTheme] = useState<Theme>(settings.theme)
+  const [flowEntry, setFlowEntry] = useState<FlowEntry>(settings.flowEntry)
   const [numbers, setNumbers] = useState(() => numberTexts(settings))
 
   // Fills form with default values; Save applies them
@@ -48,6 +51,7 @@ export function SettingsDialog({
     setPattern(DEFAULT_SETTINGS.fileNamePattern)
     setPorts(DEFAULT_SETTINGS.extraPorts.join(", "))
     setTheme(DEFAULT_SETTINGS.theme)
+    setFlowEntry(DEFAULT_SETTINGS.flowEntry)
     setNumbers(numberTexts(DEFAULT_SETTINGS))
   }
 
@@ -58,6 +62,7 @@ export function SettingsDialog({
   const invalid = new Set<string>(NUMBER_KEYS.filter((key) => !(parseNumber(numbers[key]) > 0)))
   // Whole days: retention rounded to 0 would delete measurements outside runs at once
   if (!Number.isInteger(parseNumber(numbers.retentionDays))) invalid.add("retentionDays")
+  if (!Number.isInteger(parseNumber(numbers.soapTimeCount))) invalid.add("soapTimeCount")
   if (!pattern.trim()) invalid.add("pattern")
 
   const numberRow = (key: NumberKey, label: React.ReactNode, unit?: string) => (
@@ -90,6 +95,7 @@ export function SettingsDialog({
       exportFolder: folder.trim(),
       fileNamePattern: pattern.trim(),
       theme,
+      flowEntry,
       extraPorts: ports
         .split(",")
         .map((port) => port.trim())
@@ -132,7 +138,8 @@ export function SettingsDialog({
                 </FormRow>
               </FormGrid>
             </FormGroup>
-            <FormGroup title="Calculation">
+            {/* C₀ is mean over C₀ window, and equilibrium is checked over same window */}
+            <FormGroup title="Equilibrium">
               <FormGrid columns={2}>
                 {numberRow(
                   "coWindowS",
@@ -141,11 +148,23 @@ export function SettingsDialog({
                   </>,
                   "s",
                 )}
+                {numberRow("equilibriumVariationPpm", "Maximum variation", "ppmv")}
               </FormGrid>
             </FormGroup>
-            <FormGroup title="Equilibrium">
+            <FormGroup title="Flow rate">
               <FormGrid columns={2}>
-                {numberRow("equilibriumBandPercent", "Maximum variation", "%")}
+                <FormRow label="Entry" id="flowEntry">
+                  <Select value={flowEntry} onValueChange={(value) => setFlowEntry(value as FlowEntry)}>
+                    <SelectTrigger id="flowEntry" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="soapFilm">Soap film times</SelectItem>
+                      <SelectItem value="flowRate">Flow rate</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormRow>
+                {numberRow("soapTimeCount", "Number of times")}
               </FormGrid>
             </FormGroup>
             <FormGroup title="Precision">
@@ -153,6 +172,7 @@ export function SettingsDialog({
                 {numberRow("massPrecisionG", "Sorbent mass", "g")}
                 <div className="col-span-2" />
                 {numberRow("soapVolumePrecisionMl", "Soap film volume", "mL")}
+                {numberRow("soapTimePrecisionS", "Soap film time", "s")}
               </FormGrid>
             </FormGroup>
             <FormGroup title="Conversion">

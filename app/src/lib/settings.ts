@@ -6,13 +6,16 @@ export const DEFAULT_SETTINGS: Settings = {
   exportFolder: "",
   fileNamePattern: "{date}_{time}_{sample}",
   coWindowS: 300,
-  equilibriumBandPercent: 6,
+  equilibriumVariationPpm: 1000,
   conversionScale: VENDOR_SCALE,
   conversionExponent: VENDOR_EXPONENT,
   extraPorts: [],
   retentionDays: 30,
   massPrecisionG: 0.0001,
   soapVolumePrecisionMl: 0.1,
+  soapTimePrecisionS: 0.01,
+  soapTimeCount: 10,
+  flowEntry: "soapFilm",
   theme: "light",
 }
 

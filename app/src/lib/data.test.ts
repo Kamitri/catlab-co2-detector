@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest"
 
 import { concentration, detectEquilibrium, withGaps } from "@/lib/data"
 import type { RunParameters } from "@/lib/api"
-import { toFormValues, toParameters } from "@/lib/runForm"
+import { runFlowEntry, toFormValues, toParameters } from "@/lib/runForm"
 import { stepValue } from "@/lib/step"
 import { RUN_TIME_AXIS, timeAxisEnd, timeTicks } from "@/lib/view"
 
-const options = { bandPercent: 3, windowS: 300, delayS: 0 }
+const options = { variationPpm: 1000, windowS: 300, delayS: 0 }
 
 function series(values: (time: number) => number, length: number) {
   const x = Array.from({ length }, (_, index) => index + 1)
@@ -126,5 +126,24 @@ describe("run form round trip", () => {
     }
     const decimals = { massG: 2, soapVolumeMl: 0 }
     expect(JSON.stringify(toParameters(toFormValues(stored, decimals)))).toBe(JSON.stringify(stored))
+  })
+})
+
+describe("flow rate entry", () => {
+  const run = { soapTimesS: [2.62], flowRateMlMin: 0, soapVolumeMl: 5 } as RunParameters
+
+  it("keeps entry of run with data, otherwise entry of Settings", () => {
+    expect(runFlowEntry(run, "flowRate")).toBe("soapFilm")
+    expect(runFlowEntry({ ...run, soapTimesS: [], flowRateMlMin: 110 }, "soapFilm")).toBe("flowRate")
+    expect(runFlowEntry({ ...run, soapTimesS: [] }, "flowRate")).toBe("flowRate")
+  })
+
+  it("replaces soap film times with entered flow rate", () => {
+    const values = { ...toFormValues(run, {}, { count: 3, entry: "flowRate" }), flowRateMlMin: "112.5" }
+    expect(values.soapTimesS).toEqual(["2.62", "", ""])
+    const parameters = toParameters(values)
+    expect(parameters.soapTimesS).toEqual([])
+    expect(parameters.flowRateMlMin).toBe(112.5)
+    expect("flowEntry" in parameters).toBe(false)
   })
 })

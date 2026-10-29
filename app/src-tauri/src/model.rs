@@ -8,7 +8,8 @@ pub struct Settings {
     pub export_folder: String,
     pub file_name_pattern: String,
     pub co_window_s: f64,
-    pub equilibrium_band_percent: f64,
+    /// Equilibrium: max - min over Co window is at most this (ppmv).
+    pub equilibrium_variation_ppm: f64,
     pub conversion_scale: f64,
     pub conversion_exponent: f64,
     pub extra_ports: Vec<String>,
@@ -17,6 +18,12 @@ pub struct Settings {
     pub mass_precision_g: f64,
     /// Precision of soap film flowmeter (mL); sets decimal places of soap film volume.
     pub soap_volume_precision_ml: f64,
+    /// Precision of soap film timer (s); sets decimal places of soap film times.
+    pub soap_time_precision_s: f64,
+    /// Number of soap film time fields in new runs.
+    pub soap_time_count: u32,
+    /// Flow rate is entered as "soapFilm" times or as "flowRate" directly.
+    pub flow_entry: String,
     /// "light", "dark" or "system".
     pub theme: String,
 }
@@ -28,6 +35,10 @@ impl Settings {
 
     pub fn soap_volume_decimals(&self) -> usize {
         decimals(self.soap_volume_precision_ml)
+    }
+
+    pub fn soap_time_decimals(&self) -> usize {
+        decimals(self.soap_time_precision_s)
     }
 
     /// Retention of measurements outside runs, at least 1 day: 0 would delete measurements outside runs at once.
@@ -59,13 +70,16 @@ impl Default for Settings {
             export_folder: String::new(),
             file_name_pattern: "{date}_{time}_{sample}".into(),
             co_window_s: 300.0,
-            equilibrium_band_percent: 6.0,
+            equilibrium_variation_ppm: 1000.0,
             conversion_scale: VENDOR_SCALE,
             conversion_exponent: VENDOR_EXPONENT,
             extra_ports: Vec::new(),
             retention_days: 30,
             mass_precision_g: 0.0001,
             soap_volume_precision_ml: 0.1,
+            soap_time_precision_s: 0.01,
+            soap_time_count: 10,
+            flow_entry: "soapFilm".into(),
             theme: "light".into(),
         }
     }

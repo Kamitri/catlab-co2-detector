@@ -1,6 +1,7 @@
 """End-to-end test of built application with simulator, tauri-driver and virtual display (Linux only)."""
 
 import math
+import re
 import os
 import signal
 import socket
@@ -119,6 +120,12 @@ def check_export(work: Path) -> None:
     print(f"Export: sheet {sheet.title}, flow rate {flow:.2f} mL/min from {len(times)} soap film times")
 
 
+def query_row(work: Path, sql: str) -> tuple:
+    """Return first row of query on application database."""
+    with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
+        return connection.execute(sql).fetchone()
+
+
 def query_count(work: Path, sql: str) -> int:
     """Return count from query on application database."""
     with sqlite3.connect(work / "data/com.catlab.co2monitor/co2-monitor.db") as connection:
@@ -204,7 +211,7 @@ def main(
 
         button(driver, "Settings").click()
         fill(driver, "folder", str(work / "exports"))
-        fill(driver, "equilibriumBandPercent", "5")
+        fill(driver, "equilibriumVariationPpm", "1500")
         # Dark theme; later screenshots show it
         driver.find_element(By.ID, "theme").click()
         driver.find_element(By.XPATH, "//div[@role='option'][normalize-space()='Dark']").click()
@@ -246,6 +253,13 @@ def main(
         # Before equilibrium, capacity is estimated from maximum and marked with warning in table and result
         estimated = "return document.querySelectorAll('[aria-label=\"Estimated capacity\"]').length"
         assert driver.execute_script(estimated) == 2, driver.execute_script(estimated)
+        # Tooltip of warning: one line of text with subscript, not columns (WebKit driver sends no pointer events)
+        driver.execute_script(
+            "document.querySelector('[aria-label=\"Estimated capacity\"]')"
+            ".dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }))"
+        )
+        tooltip = "return document.querySelector('[data-slot=tooltip-content]')?.textContent ?? ''"
+        wait_until(lambda: "mean of the C0 window." in driver.execute_script(tooltip), 5, "Tooltip not shown")
         shot(driver, "04b-history-running")
         wait_until(lambda: driver.execute_script(points) != first_points, 8, "Result of running run not refreshed")
         print(f"History during run: # data points {first_points} -> {driver.execute_script(points)}, estimated capacity")
@@ -469,9 +483,24 @@ def main(
         wait_until(lambda: query_count(work, "SELECT COUNT(*) FROM runs") == 1, 5, "Run not deleted")
         print("Run deleted in History")
 
+        # Export as TXT: result file of CO2 NDIR Monitor, one line "index CO₂" per measurement
+        driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
+        # Keyboard opens menu: WebKit driver sends no pointerdown, on which menu opens with mouse
+        driver.find_element(By.CSS_SELECTOR, "button[aria-label='Export format']").send_keys(Keys.ENTER)
+        item = "//div[@role='menuitem'][normalize-space()='Export as TXT']"
+        wait_until(lambda: driver.find_elements(By.XPATH, item), 5, "Export menu not shown")
+        shot(driver, "13b-export-menu")
+        driver.find_element(By.XPATH, item).send_keys(Keys.ENTER)
+        wait_until(lambda: list((work / "exports").glob("*.txt")), 5, "TXT not exported")
+        lines = next((work / "exports").glob("*.txt")).read_text().splitlines()
+        run_start, run_end = query_row(work, "SELECT started_at, finished_at FROM runs WHERE status = 'finished'")
+        expected = query_count(work, f"SELECT COUNT(*) FROM measurements WHERE timestamp BETWEEN {run_start} AND {run_end}")
+        assert len(lines) == expected, (len(lines), expected)
+        assert all(re.fullmatch(rf"{index + 1} \d+\.\d+", line) for index, line in enumerate(lines)), lines[:3]
+        print(f"Export as TXT: {len(lines)} lines, first {lines[0]}")
+
         # Data editor: typing in raw signal cell replaces value; CO₂ follows from raw signal. Save keeps measurements
         # and stores edited data
-        driver.find_element(By.XPATH, "//td[normalize-space()='Na-ZY']").click()
         button(driver, "Edit data").click()
         wait_until(lambda: driver.find_elements(By.CSS_SELECTOR, "[data-row]"), 5, "Data not shown")
         driver.find_element(By.CSS_SELECTOR, "[aria-label='Data']").send_keys("300", Keys.ENTER)
@@ -498,7 +527,9 @@ def main(
         # Reset to defaults fills form with default values; Cancel keeps saved settings
         button(driver, "Settings").click()
         dialog_button(driver, "Reset to defaults").click()
-        assert driver.find_element(By.ID, "equilibriumBandPercent").get_attribute("value") == "6"
+        assert driver.find_element(By.ID, "equilibriumVariationPpm").get_attribute("value") == "1000"
+        assert driver.find_element(By.ID, "soapTimePrecisionS").get_attribute("value") == "0.01"
+        assert driver.find_element(By.ID, "soapTimeCount").get_attribute("value") == "10"
         assert driver.find_element(By.ID, "massPrecisionG").get_attribute("value") == "0.0001"
         theme_text = driver.find_element(By.ID, "theme").get_attribute("textContent")
         assert theme_text == "Light", theme_text

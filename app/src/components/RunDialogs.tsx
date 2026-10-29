@@ -81,11 +81,11 @@ export function FinishDialog({
   onCancel: () => void
   onFinish: (parameters: RunParameters) => Promise<void>
 }) {
-  const form = useRunForm(run.parameters)
+  const form = useRunForm(run.parameters, true)
   const [busy, setBusy] = useState(false)
   // Finish ends run: confirmation after soap film times are entered
   const [confirming, setConfirming] = useState(false)
-  const invalid = [...form.errors].some((key) => key.startsWith("soap"))
+  const invalid = [...form.errors].some((key) => key.startsWith("soap") || key === "flowRateMlMin")
 
   function submit(event: React.FormEvent) {
     event.preventDefault()

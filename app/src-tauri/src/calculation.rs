@@ -153,9 +153,9 @@ pub fn run_stoichiometric_time(run: &Run, series: &Series) -> f64 {
 }
 
 /// Equilibrium was reached at some time of run, with rule of `detectEquilibrium` in data.ts checked at each sample:
-/// over last `window_s`, (max - min) / mean is within `band_percent`, data covers at least 90 % of window, and mean
-/// is at least twice baseline (minimum of run up to that sample), so flat baseline before breakthrough does not count.
-pub fn equilibrium_reached(series: &Series, window_s: f64, delay_s: f64, band_percent: f64) -> bool {
+/// over last `window_s`, max - min is at most `variation_ppm`, data covers at least 90 % of window, and mean is at
+/// least twice baseline (minimum of run up to that sample), so flat baseline before breakthrough does not count.
+pub fn equilibrium_reached(series: &Series, window_s: f64, delay_s: f64, variation_ppm: f64) -> bool {
     let (times, values) = (&series.times, &series.concentrations);
     let mut baseline_ppm = f64::INFINITY;
     for end_index in 0..times.len() {
@@ -176,8 +176,7 @@ pub fn equilibrium_reached(series: &Series, window_s: f64, delay_s: f64, band_pe
             first = times[index];
         }
         let mean = sum / f64::from(count);
-        if end - first >= 0.9 * window_s && mean >= 2.0 * baseline_ppm && (maximum - minimum) / mean * 100.0 <= band_percent
-        {
+        if end - first >= 0.9 * window_s && mean >= 2.0 * baseline_ppm && maximum - minimum <= variation_ppm {
             return true;
         }
     }
@@ -367,12 +366,12 @@ mod tests {
     #[test]
     fn equilibrium_needs_stable_window_above_baseline() {
         // Flat baseline is stable but below twice baseline
-        assert!(!equilibrium_reached(&rising_series(100), 10.0, 0.0, 6.0));
-        // Rising curve varies more than 6 % over window
-        assert!(!equilibrium_reached(&rising_series(190), 10.0, 0.0, 6.0));
+        assert!(!equilibrium_reached(&rising_series(100), 10.0, 0.0, 1000.0));
+        // Rising curve varies 3000 ppm over window
+        assert!(!equilibrium_reached(&rising_series(190), 10.0, 0.0, 1000.0));
         // Plateau after 200 s is stable
-        assert!(equilibrium_reached(&rising_series(220), 10.0, 0.0, 6.0));
-        assert!(equilibrium_reached(&step_series(), 10.0, 0.0, 6.0));
+        assert!(equilibrium_reached(&rising_series(220), 10.0, 0.0, 1000.0));
+        assert!(equilibrium_reached(&step_series(), 10.0, 0.0, 1000.0));
     }
 
     #[test]

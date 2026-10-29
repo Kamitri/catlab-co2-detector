@@ -22,6 +22,7 @@ The serial protocol and the conversion formula are documented in [`docs/protocol
 - Charts show time in seconds on the bottom axis and clock time on the top axis. The chart of several runs in History shows seconds only.
 - Finish and Abort export the run to an xlsx file in the export folder. An existing file is never overwritten.
 - Export in History writes all checked runs to one workbook, one sheet per run. The sheet name is the start date and the sample, for example `2026-10-25_Na-ZY`.
+- The menu next to Export of one run has Export as TXT: the result file of `CO2 NDIR Monitor.exe`, one line `index CO₂` per measurement. The values are calculated in 80-bit extended precision, as in the vendor application, and are identical to the vendor result files in `CO2 NDIR Monitor/KQ`.
 - Each sheet follows the layout and colors of `CO2 capture calculation standard.xlsx`: data in columns A to H, parameters in columns J to N with the chart below them, and soap film times in columns P to R. Columns B (time), C (raw signal), E (Δt) and F (C − baseline) are hidden.
 - The workbook has live formulas. `src-tauri/src/calculation.rs` uses the same method, and `src-tauri/examples/export_check.rs` checks that both produce the same results.
 
@@ -32,12 +33,12 @@ The method follows `CO2 capture calculation standard.xlsx`, with these changes:
 - Baseline is the minimum of the run, as in the workbook. The baseline cancels out of the capacity: it changes only C/C₀ and the breakthrough time.
 - C₀ is the mean over the last C₀ window (default 300 s) minus the baseline, instead of the maximum. The maximum is the highest noise spike and makes the capacity increase with run length.
 - History shows an estimated capacity for a running run before equilibrium: C₀ is the maximum minus the baseline, as in the workbook. The row is yellow with a warning sign. The export always uses the C₀ window.
-- Equilibrium is reached when, over the C₀ window, (max − min) / mean is at most the maximum variation in Settings (default 6 %). C₀ is then the mean of a stable window.
+- Equilibrium is reached when, over the C₀ window, max − min is at most the maximum variation in Settings (default 1000 ppmv over 300 s). C₀ is then the mean of a stable window.
 - Time steps come from timestamps, keeping the time axis correct when data is missing.
 - Optional blank run: its stoichiometric time is subtracted (correction for dead volume).
 - Flow rate is the mean of the soap film flow rates, each 60 × volume / time (mL/min). The number of times is free (10 by default).
 - Gas law uses R = 0.08206 L·atm/(mol·K) and T + 273.15.
-- Flow rate is the mean of the 5 measurements entered at Finish, or the nominal flow rate without measurements.
+- Settings sets the number of soap film time fields and the precision of the timer (default 0.01 s). With entry Flow rate in Settings, the flow rate is entered directly instead of soap film times.
 
 ## Development
 

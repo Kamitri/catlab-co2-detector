@@ -40,7 +40,8 @@ export function withGaps(x: number[], y: number[], threshold: number): { x: (num
 }
 
 export interface EquilibriumOptions {
-  bandPercent: number
+  /** Maximum of max - min over window (ppmv). */
+  variationPpm: number
   /** C<sub>0</sub> window: equilibrium is checked over same interval that C<sub>0</sub> is averaged over. */
   windowS: number
   delayS: number
@@ -48,7 +49,7 @@ export interface EquilibriumOptions {
 
 /**
  * Returns elapsed time (s) at which concentration became stable, or null.
- * Stable: over last `windowS`, (max - min) / mean is within maximum variation, and mean is at least twice baseline
+ * Stable: over last `windowS`, max - min is at most maximum variation (ppmv), and mean is at least twice baseline
  * (minimum of run), so flat baseline before breakthrough is not detected.
  */
 export function detectEquilibrium(series: Series, options: EquilibriumOptions): number | null {
@@ -75,5 +76,5 @@ export function detectEquilibrium(series: Series, options: EquilibriumOptions): 
   if (end - first < 0.9 * options.windowS) return null
   const mean = sum / count
   if (mean < 2 * baseline) return null
-  return ((maximum - minimum) / mean) * 100 <= options.bandPercent ? end : null
+  return maximum - minimum <= options.variationPpm ? end : null
 }
