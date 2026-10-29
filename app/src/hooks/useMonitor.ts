@@ -170,7 +170,7 @@ export function useMonitor() {
     if (!run || !settings || equilibriumRunId.current === run.id) return
     const series = runSeries(run, measurements.current)
     const reached = detectEquilibrium(series, {
-      bandPercent: settings.equilibriumBandPercent,
+      variationPpm: settings.equilibriumVariationPpm,
       windowS: run.parameters.coWindowS,
       delayS: run.parameters.delayS,
     })

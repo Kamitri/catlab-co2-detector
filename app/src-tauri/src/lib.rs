@@ -4,6 +4,7 @@ pub mod db;
 pub mod export;
 pub mod model;
 pub mod protocol;
+pub mod vendor_txt;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -358,9 +359,9 @@ fn get_run_result(state: State<AppState>, id: i64) -> CommandResult<RunResult> {
     let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
     let (result, _, data) = run_result(&database, &run)?;
     if run.status == RunStatus::Running {
-        let band_percent = database.settings().map_err(error_text)?.equilibrium_band_percent;
+        let variation_ppm = database.settings().map_err(error_text)?.equilibrium_variation_ppm;
         let parameters = &run.parameters;
-        if !equilibrium_reached(&data.series, parameters.co_window_s, parameters.delay_s, band_percent) {
+        if !equilibrium_reached(&data.series, parameters.co_window_s, parameters.delay_s, variation_ppm) {
             return Ok(estimate(&run, &data.series, result.blank_time_s));
         }
     }
@@ -376,6 +377,7 @@ struct ExportJob {
     blank_label: Option<String>,
     mass_decimals: usize,
     soap_volume_decimals: usize,
+    soap_time_decimals: usize,
 }
 
 /// Export folder of Settings, or default folder when not set; folder is created when missing.
@@ -405,7 +407,7 @@ fn open_export_folder(app: AppHandle, state: State<AppState>) -> CommandResult<(
 fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResult<ExportJob> {
     let settings = database.settings().map_err(error_text)?;
     let folder = export_folder_path(app, database)?;
-    let path = export::unique_path(&folder, &export::file_name(&settings.file_name_pattern, &run));
+    let path = export::unique_path(&folder, &export::file_name(&settings.file_name_pattern, &run), "xlsx");
     let (result, blank_label, data) = run_result(database, &run)?;
     Ok(ExportJob {
         path,
@@ -415,6 +417,7 @@ fn prepare_export(app: &AppHandle, database: &Database, run: Run) -> CommandResu
         blank_label,
         mass_decimals: settings.mass_decimals(),
         soap_volume_decimals: settings.soap_volume_decimals(),
+        soap_time_decimals: settings.soap_time_decimals(),
     })
 }
 
@@ -427,6 +430,7 @@ fn write_export(app: &AppHandle, state: &AppState, job: ExportJob) -> CommandRes
         blank_label: job.blank_label.clone(),
         mass_decimals: job.mass_decimals,
         soap_volume_decimals: job.soap_volume_decimals,
+        soap_time_decimals: job.soap_time_decimals,
         cached_results: true,
     };
     export::write_workbook(&job.path, &[input]).map_err(error_text)?;
@@ -452,6 +456,36 @@ fn export_run(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<
     job.and_then(|job| write_export(&app, &state, job)).inspect_err(|error| log_export_error(&app, &state, error))
 }
 
+/// Writes run to export folder as result file of `CO2 NDIR Monitor.exe` (.txt): one line "index CO2" per measurement.
+#[tauri::command]
+fn export_run_txt(app: AppHandle, state: State<AppState>, id: i64) -> CommandResult<String> {
+    let result = (|| {
+        let (path, text) = {
+            let database = lock(&state.database);
+            let run = database.run(id).map_err(error_text)?.ok_or("Run not found")?;
+            let settings = database.settings().map_err(error_text)?;
+            let folder = export_folder_path(&app, &database)?;
+            let path = export::unique_path(&folder, &export::file_name(&settings.file_name_pattern, &run), "txt");
+            let data = load_run_data(&database, &run).map_err(error_text)?;
+            let conversion = vendor_txt::VendorConversion::new(run.conversion_scale, run.conversion_exponent);
+            let text = match &data.counts {
+                Some(counts) => vendor_txt::result_file(counts.iter().map(|count| conversion.text(*count))),
+                // Data edited before raw signal was editable has CO2 values only
+                None => vendor_txt::result_file(
+                    data.series.concentrations.iter().map(|value| vendor_txt::value_text(*value)),
+                ),
+            };
+            (path, text)
+        };
+        // Written without database lock, as workbook export
+        std::fs::write(&path, text).map_err(error_text)?;
+        let file_name = path.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+        log(&app, &lock(&state.database), "info", &format!("Exported {file_name}"));
+        Ok(path.display().to_string())
+    })();
+    result.inspect_err(|error: &String| log_export_error(&app, &state, error))
+}
+
 /// Exports runs to one workbook at path chosen by user, one sheet per run.
 #[tauri::command]
 fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: String) -> CommandResult<String> {
@@ -470,6 +504,7 @@ fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: Stri
                 blank_label,
                 mass_decimals: settings.mass_decimals(),
                 soap_volume_decimals: settings.soap_volume_decimals(),
+                soap_time_decimals: settings.soap_time_decimals(),
             });
         }
         jobs
@@ -483,6 +518,7 @@ fn export_runs(app: AppHandle, state: State<AppState>, ids: Vec<i64>, path: Stri
             blank_label: job.blank_label.clone(),
             mass_decimals: job.mass_decimals,
             soap_volume_decimals: job.soap_volume_decimals,
+            soap_time_decimals: job.soap_time_decimals,
             cached_results: true,
         })
         .collect();
@@ -707,6 +743,7 @@ pub fn run() {
             restore_run_data,
             export_run,
             export_runs,
+            export_run_txt,
             export_folder,
             open_export_folder,
             finish_run,

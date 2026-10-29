@@ -42,7 +42,10 @@ const CALCULATION_FIELDS: NumberField[] = [
 
 type RunForm = ReturnType<typeof useRunForm>
 
-/** Soap film flowmeter: time over volume for each measurement; flow rate is calculated from times. */
+/**
+ * Flow rate: soap film flowmeter times over volume, from which flow rate is calculated, or flow rate entered
+ * directly (entry in Settings).
+ */
 export function SoapFilmFields({
   form,
   showValidation,
@@ -63,6 +66,27 @@ export function SoapFilmFields({
       "soapTimesS",
       values.soapTimesS.map((item, position) => (position === index ? text : item)),
     )
+
+  if (values.flowEntry === "flowRate") {
+    const invalid = showValidation && errors.has("flowRateMlMin")
+    return (
+      <FormGroup title="Flow rate">
+        <FormGrid columns={columns}>
+          <FormRow label="Flow rate" id="flowRateMlMin" invalid={invalid} wide>
+            <div className="w-35">
+              <NumberInput
+                id="flowRateMlMin"
+                value={values.flowRateMlMin}
+                unit="mL/min"
+                invalid={invalid}
+                onChange={(value) => set("flowRateMlMin", value)}
+              />
+            </div>
+          </FormRow>
+        </FormGrid>
+      </FormGroup>
+    )
+  }
 
   return (
     <FormGroup
@@ -107,7 +131,14 @@ export function SoapFilmFields({
             <FormRow key={key} label={`Time ${index + 1}`} id={key} invalid={invalid} wide>
               <div className="flex items-center gap-3">
                 <div className="w-35">
-                  <NumberInput id={key} value={text} unit="s" invalid={invalid} onChange={(value) => setTime(index, value)} />
+                  <NumberInput
+                    id={key}
+                    value={text}
+                    unit="s"
+                    invalid={invalid}
+                    decimals={decimals.soapTimeS}
+                    onChange={(value) => setTime(index, value)}
+                  />
                 </div>
                 <span className="w-24 whitespace-nowrap text-muted-foreground tabular-nums">
                   {time > 0 && volume > 0 ? `${formatNumber(soapFlowRate(volume, time))} mL/min` : ""}

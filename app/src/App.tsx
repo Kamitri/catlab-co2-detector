@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import icon from "@/assets/icon.png"
 import { useMonitor } from "@/hooks/useMonitor"
-import { PrecisionContext } from "@/hooks/usePrecision"
+import { FlowOptionsContext, PrecisionContext } from "@/hooks/usePrecision"
 import { useTheme } from "@/hooks/useTheme"
 import { useUpdater } from "@/hooks/useUpdater"
 import { api, events, type Run, type RunParameters, type Settings } from "@/lib/api"
@@ -106,8 +106,16 @@ export default function App() {
     () => ({
       massG: decimals(settings?.massPrecisionG ?? DEFAULT_SETTINGS.massPrecisionG),
       soapVolumeMl: decimals(settings?.soapVolumePrecisionMl ?? DEFAULT_SETTINGS.soapVolumePrecisionMl),
+      soapTimeS: decimals(settings?.soapTimePrecisionS ?? DEFAULT_SETTINGS.soapTimePrecisionS),
     }),
-    [settings?.massPrecisionG, settings?.soapVolumePrecisionMl],
+    [settings?.massPrecisionG, settings?.soapVolumePrecisionMl, settings?.soapTimePrecisionS],
+  )
+  const flowOptions = useMemo(
+    () => ({
+      count: settings?.soapTimeCount ?? DEFAULT_SETTINGS.soapTimeCount,
+      entry: settings?.flowEntry ?? DEFAULT_SETTINGS.flowEntry,
+    }),
+    [settings?.soapTimeCount, settings?.flowEntry],
   )
 
   const content = (
@@ -295,5 +303,9 @@ export default function App() {
       )}
     </div>
   )
-  return <PrecisionContext.Provider value={precision}>{content}</PrecisionContext.Provider>
+  return (
+    <PrecisionContext.Provider value={precision}>
+      <FlowOptionsContext.Provider value={flowOptions}>{content}</FlowOptionsContext.Provider>
+    </PrecisionContext.Provider>
+  )
 }

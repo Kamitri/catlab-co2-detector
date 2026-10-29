@@ -5,17 +5,25 @@ export interface Settings {
   exportFolder: string
   fileNamePattern: string
   coWindowS: number
-  equilibriumBandPercent: number
+  /** Equilibrium: max - min over C₀ window is at most this (ppmv). */
+  equilibriumVariationPpm: number
   conversionScale: number
   conversionExponent: number
   extraPorts: string[]
   retentionDays: number
   massPrecisionG: number
   soapVolumePrecisionMl: number
+  soapTimePrecisionS: number
+  /** Number of soap film time fields in new runs. */
+  soapTimeCount: number
+  flowEntry: FlowEntry
   theme: Theme
 }
 
 export type Theme = "light" | "dark" | "system"
+
+/** Flow rate is entered as soap film times, or directly. */
+export type FlowEntry = "soapFilm" | "flowRate"
 
 export type RunStatus = "running" | "finished" | "aborted"
 
@@ -135,6 +143,8 @@ export const api = {
   /** Removes edited data; run uses measurements again. */
   restoreRunData: (id: number) => invoke<void>("restore_run_data", { id }),
   exportRun: (id: number) => invoke<string>("export_run", { id }),
+  /** Exports run as result file of CO2 NDIR Monitor (.txt). */
+  exportRunTxt: (id: number) => invoke<string>("export_run_txt", { id }),
   /** Exports runs to one workbook, one sheet per run. */
   exportRuns: (ids: number[], path: string) => invoke<string>("export_runs", { ids, path }),
   exportFolder: () => invoke<string>("export_folder"),

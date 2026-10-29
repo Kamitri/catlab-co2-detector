@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { GripVertical, TriangleAlert } from "lucide-react"
+import { ChevronDown, GripVertical, TriangleAlert } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { Chart, type ChartTrace, type DragMode } from "@/components/Chart"
@@ -11,6 +11,7 @@ import { RunFields } from "@/components/RunForm"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -45,8 +46,11 @@ function EstimateWarning() {
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-72">
-          Equilibrium not established. Currently using the maximum value as the endpoint instead of the mean of the C
-          <sub>0</sub> window.
+          {/* One element: tooltip content is flex container, and text beside <sub> would become separate columns */}
+          <span>
+            Equilibrium not established. Currently using the maximum value as the endpoint instead of the mean of the C
+            <sub>0</sub> window.
+          </span>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -99,7 +103,7 @@ function RunDetail({
   onSaved: () => void
   onDeleted: () => void
 }) {
-  const form = useRunForm(run.parameters)
+  const form = useRunForm(run.parameters, true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editData, setEditData] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -116,10 +120,10 @@ function RunDetail({
     }
   }
 
-  async function exportRun() {
+  async function exportRun(format: "xlsx" | "txt") {
     setBusy(true)
     try {
-      await api.exportRun(run.id)
+      await (format === "txt" ? api.exportRunTxt(run.id) : api.exportRun(run.id))
       onSaved()
     } finally {
       setBusy(false)
@@ -134,9 +138,33 @@ function RunDetail({
           <Button disabled={!dirty || form.errors.size > 0} onClick={() => void save()}>
             Save
           </Button>
-          <Button variant="outline" disabled={busy || run.status === "running"} onClick={() => void exportRun()}>
-            Export
-          </Button>
+          {/* Export writes workbook; menu has result file of CO2 NDIR Monitor, one file per run */}
+          <div className="flex">
+            <Button
+              variant="outline"
+              className="rounded-r-none"
+              disabled={busy || run.status === "running"}
+              onClick={() => void exportRun("xlsx")}
+            >
+              Export
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Export format"
+                  className="-ml-px w-6 rounded-l-none"
+                  disabled={busy || run.status === "running"}
+                >
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void exportRun("txt")}>Export as TXT</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           {run.exportPath && (
             <Button variant="outline" onClick={() => void revealItemInDir(run.exportPath!)}>
               Show in folder
