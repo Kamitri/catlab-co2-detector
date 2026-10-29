@@ -33,11 +33,16 @@ function loadManual(): Promise<PDFDocumentProxy> {
   return manual
 }
 
+// Scroll position as fraction of content height: kept while other tabs are shown, and fits other window width
+let savedPosition = 0
+
 /** Manual of CO₂ system (PDF), one page below another; text can be selected and copied. */
 export function ManualView() {
   const viewport = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null)
   const [width, setWidth] = useState(0)
+  // Scroll events before position is restored would overwrite saved position with 0
+  const restored = useRef(false)
 
   useEffect(() => {
     loadManual().then(setDocument, (error: unknown) => void api.logMessage("error", `Manual not loaded: ${String(error)}`))
@@ -53,8 +58,22 @@ export function ManualView() {
     return () => observer.disconnect()
   }, [])
 
+  // Pages have A4 height before render, so content height is known when pages are first laid out
+  useLayoutEffect(() => {
+    const element = viewport.current
+    if (!element || !document || width === 0 || restored.current) return
+    restored.current = true
+    element.scrollTop = savedPosition * element.scrollHeight
+  }, [document, width])
+
   return (
-    <div ref={viewport} className="min-h-0 flex-1 overflow-auto bg-muted/40">
+    <div
+      ref={viewport}
+      className="min-h-0 flex-1 overflow-auto bg-muted/40"
+      onScroll={(event) => {
+        if (restored.current) savedPosition = event.currentTarget.scrollTop / event.currentTarget.scrollHeight
+      }}
+    >
       <div className="flex flex-col items-center gap-4 py-6">
         {document &&
           width > 0 &&
